@@ -1,0 +1,260 @@
+<main class="shell">
+  <section class="panel hero">
+    <div class="hero-head">
+      <h1>ChatGPT Voice Companion</h1>
+      <span class="badge" [class.ok]="connected()" [class.offline]="!connected()">
+        {{ connected() ? 'API Online' : 'API Offline' }}
+      </span>
+    </div>
+    <p class="subtitle">Local control panel for capture, speech, and diagnostics.</p>
+    <div class="actions">
+      <button type="button" (click)="refreshAll()" [disabled]="busy()">Refresh</button>
+      <button type="button" class="quiet" (click)="resume()">Resume</button>
+      <button type="button" class="quiet" (click)="pause()">Pause</button>
+      <button type="button" class="quiet" (click)="stop()">Stop</button>
+      <button type="button" class="quiet" (click)="skip()">Skip</button>
+      <button type="button" class="quiet" (click)="repeat()">Repeat</button>
+    </div>
+    @if (message()) {
+      <p class="status">{{ message() }}</p>
+    }
+  </section>
+
+  <section class="panel">
+    <h2>Speech Tracker</h2>
+    <div class="actions tracker-actions">
+      <button type="button" (click)="start()">Play</button>
+      <button type="button" class="quiet" (click)="resume()">Resume</button>
+      <button type="button" class="quiet" (click)="pause()">Pause</button>
+      <button type="button" class="quiet" (click)="stop()">Stop</button>
+    </div>
+    @if (speechMode() === 'cloud') {
+      <label class="input-row">
+        <span>Speed</span>
+        <input
+          type="range"
+          min="0.25"
+          max="4"
+          step="0.05"
+          [value]="cloudSpeed()"
+          (input)="setCloudSpeed($any($event.target).value)" />
+        <strong>{{ cloudSpeed() }}</strong>
+      </label>
+    } @else if (speechMode() === 'edge') {
+      <label class="input-row">
+        <span>Rate %</span>
+        <input
+          type="range"
+          min="-50"
+          max="100"
+          step="1"
+          [value]="edgeRatePercent()"
+          (input)="setEdgeRatePercent($any($event.target).value)" />
+        <strong>{{ edgeRatePercent() }}%</strong>
+      </label>
+    } @else {
+      <label class="input-row">
+        <span>Speed</span>
+        <input
+          type="range"
+          min="-10"
+          max="10"
+          step="1"
+          [value]="speechRate()"
+          (input)="setSpeechRate($any($event.target).value)" />
+        <strong>{{ speechRate() }}</strong>
+      </label>
+    }
+    @if (!speechTracker()) {
+      <p class="hint">Tracker unavailable.</p>
+    } @else {
+      <div class="diag-grid">
+        <p><strong>Speaking:</strong> {{ speechTracker()?.isSpeaking ? 'Yes' : 'No' }}</p>
+        <p><strong>Paused:</strong> {{ speechTracker()?.isPaused ? 'Yes' : 'No' }}</p>
+        <p><strong>Queue:</strong> {{ speechTracker()?.queuedItems }}</p>
+      </div>
+      @if (speechTracker()?.currentText) {
+        <div class="diag-grid">
+          <p><strong>Progress:</strong> {{ speechTracker()?.currentCharIndex }} / {{ speechTracker()?.currentTextLength }} chars</p>
+          <p><strong>Segment:</strong> {{ speechTracker()?.currentSegmentIndex }} / {{ speechTracker()?.totalSegments }}</p>
+        </div>
+        <p class="hint">Current message and active segment:</p>
+        <div class="tracker-text tracker-rich">
+          <span>{{ trackerHighlight().before }}</span><mark>{{ trackerHighlight().current }}</mark><span>{{ trackerHighlight().after }}</span>
+        </div>
+        @if (speechTracker()?.currentSegmentText) {
+          <pre class="tracker-segment">{{ speechTracker()?.currentSegmentText }}</pre>
+        }
+      } @else {
+        <p class="hint">No message is currently being spoken.</p>
+      }
+    }
+  </section>
+
+  <section class="controls-grid">
+    <article class="panel settings-panel">
+      <h2>Capture Settings</h2>
+      <label class="toggle">
+        <input
+          type="checkbox"
+          [checked]="readAssistant()"
+          (change)="setReadAssistant($any($event.target).checked)" />
+        <span>Read assistant replies</span>
+      </label>
+      <label class="toggle">
+        <input
+          type="checkbox"
+          [checked]="readUser()"
+          (change)="setReadUser($any($event.target).checked)" />
+        <span>Read user prompts</span>
+      </label>
+      <p class="hint">
+        These toggles are persisted via <code>/api/settings</code> and applied by
+        <code>/api/capture/event</code>.
+      </p>
+    </article>
+
+    <article class="panel settings-panel">
+      <h2>Speech Engine</h2>
+      <label class="input-row">
+        <span>Mode</span>
+        <select [value]="speechMode()" (change)="setSpeechMode($any($event.target).value)">
+          <option value="local">Local (Windows voices)</option>
+          <option value="cloud">Cloud (OpenAI TTS)</option>
+          <option value="edge">Edge TTS (online)</option>
+        </select>
+      </label>
+
+      @if (speechMode() === 'cloud') {
+        <label class="input-row stack">
+          <span>API key</span>
+          <input
+            type="password"
+            [value]="cloudApiKey()"
+            placeholder="sk-..."
+            (change)="setCloudApiKey($any($event.target).value)" />
+        </label>
+        <label class="input-row stack">
+          <span>Model</span>
+          <input
+            type="text"
+            [value]="cloudModel()"
+            placeholder="gpt-4o-mini-tts"
+            (change)="setCloudModel($any($event.target).value)" />
+        </label>
+        <label class="input-row">
+          <span>Voice</span>
+          <input
+            type="text"
+            [value]="cloudVoice()"
+            placeholder="alloy"
+            (change)="setCloudVoice($any($event.target).value)" />
+        </label>
+        <p class="hint">
+          Cloud mode uses OpenAI TTS and needs a valid API key.
+        </p>
+      } @else if (speechMode() === 'edge') {
+        <label class="input-row">
+          <span>Voice</span>
+          <select
+            [value]="edgeVoice()"
+            (change)="setEdgeVoice($any($event.target).value)">
+            <option value="">Select voice...</option>
+            <option [value]="legacyEdgeVoice">{{ legacyEdgeVoice }} (default)</option>
+            @for (voice of edgeVoices(); track voice.shortName) {
+              <option [value]="voice.shortName">{{ voice.shortName }} ({{ voice.locale }})</option>
+            }
+          </select>
+        </label>
+        <p class="hint">
+          Edge mode shows only EN-US voices and requires <code>edge-tts</code>.
+        </p>
+        @if (edgeVoices().length === 0) {
+          <p class="hint">No EN-US Edge voices were returned from the API.</p>
+        }
+      } @else {
+      <label class="input-row">
+        <span>Voice</span>
+        <select [value]="selectedVoice()" (change)="setVoice($any($event.target).value)">
+          <option value="">System default</option>
+          @for (voice of voices(); track voice.name) {
+            <option [value]="voice.name">{{ voice.name }} ({{ voice.culture }})</option>
+          }
+        </select>
+      </label>
+      @if (voices().length === 0) {
+        <p class="hint">No voices reported. This can be empty on non-Windows hosts.</p>
+      } @else {
+        <ul class="voice-list">
+          @for (voice of voices(); track voice.name) {
+            <li>
+              <strong>{{ voice.name }}</strong>
+              <span>{{ voice.culture }} | {{ voice.gender }} | {{ voice.age }}</span>
+            </li>
+          }
+        </ul>
+      }
+      }
+    </article>
+  </section>
+
+  <section class="panel">
+    <h2>Speech Diagnostics</h2>
+    @if (speechDiagnostics()?.latestEvent === null) {
+      <p class="hint">No speech events yet.</p>
+    } @else {
+      <div class="diag-grid">
+        <p><strong>Mode:</strong> {{ speechDiagnostics()?.mode }}</p>
+        <p><strong>Status:</strong> {{ speechDiagnostics()?.latestEvent?.status }}</p>
+        <p><strong>Message ID:</strong> {{ speechDiagnostics()?.latestEvent?.messageId }}</p>
+      </div>
+      @if (speechDiagnostics()?.latestEvent?.error) {
+        <pre class="diag-error">{{ speechDiagnostics()?.latestEvent?.error }}</pre>
+        <button type="button" class="quiet tiny" (click)="clearLatestError()">Clear latest error</button>
+      }
+    }
+  </section>
+
+  <section class="panel">
+    <div class="history-head">
+      <h2>Recent Captured Messages</h2>
+      <label>
+        Limit
+        <input
+          type="number"
+          min="10"
+          max="500"
+          [value]="historyLimit()"
+          (change)="setHistoryLimit($any($event.target).value)" />
+      </label>
+    </div>
+    @if (history().length === 0) {
+      <p class="hint">No captured messages yet.</p>
+    } @else {
+      <ul class="history">
+        @for (item of history(); track item.id) {
+          <li [class.current]="isCurrentMessage(item)">
+            <div class="meta">
+              <span class="role" [class.assistant]="item.role === 'assistant'" [class.user]="item.role === 'user'">
+                {{ item.role }}
+              </span>
+              <time>{{ item.updatedAt | date: 'short' }}</time>
+              <span>#{{ item.id }}</span>
+              @if (isCurrentMessage(item)) {
+                <span class="track-badge">Speaking {{ currentMessageProgressPercent(item) }}%</span>
+              }
+              <button type="button" class="quiet tiny inline" (click)="playCapturedMessage(item.id)">Play</button>
+            </div>
+            <p class="message-text">{{ item.text }}</p>
+            @if (isCurrentMessage(item)) {
+              <div class="progress-row">
+                <progress [value]="currentMessageProgressPercent(item)" max="100"></progress>
+                <span>{{ currentMessageProgressPercent(item) }}%</span>
+              </div>
+            }
+          </li>
+        }
+      </ul>
+    }
+  </section>
+</main>

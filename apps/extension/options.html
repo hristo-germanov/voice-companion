@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>ChatGPT Voice Companion - Options</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 16px;
+      }
+      label {
+        display: block;
+        margin: 12px 0 4px;
+      }
+      input[type="text"],
+      input[type="number"] {
+        width: 240px;
+        padding: 6px;
+      }
+      .row {
+        margin-bottom: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>ChatGPT Voice Companion</h2>
+    <div class="row">
+      <label for="port">Backend Port</label>
+      <input id="port" type="number" min="1" max="65535" />
+    </div>
+    <div class="row">
+      <label for="apiKey">API Key</label>
+      <input id="apiKey" type="text" />
+    </div>
+    <div class="row">
+      <label>
+        <input id="enabled" type="checkbox" />
+        Enabled
+      </label>
+    </div>
+    <button id="save">Save</button>
+    <span id="status"></span>
+    <script src="options.js"></script>
+  </body>
+</html>

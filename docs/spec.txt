@@ -1,0 +1,195 @@
+Project description
+
+Build a local desktop companion that reads ChatGPT conversations aloud. It runs locally, stores settings/history in SQLite, provides an Angular control UI, and uses a browser extension to reliably detect and extract new messages from the ChatGPT web UI.
+
+Components
+1) Browser Extension (Chrome/Edge; Manifest V3)
+
+Responsibilities:
+
+Detect when the user is on ChatGPT (and optionally other LLM sites later).
+
+Observe the conversation for new messages (user + assistant).
+
+Extract:
+
+message role (user/assistant)
+
+message text (including code blocks in a controlled way)
+
+timestamp + conversation identifier (if available)
+
+Send message events to your local backend over http://127.0.0.1:<port>.
+
+Key technical pieces:
+
+Content script injected on ChatGPT pages
+
+MutationObserver to detect new/updated message elements (streaming responses)
+
+A small DOM Adapter layer:
+
+selectors for message containers
+
+parsing rules for markdown-like structure
+
+fallback selectors if the UI changes
+
+2) .NET Backend (ASP.NET Core)
+
+Responsibilities:
+
+Receive message events from the extension.
+
+Deduplicate and manage streaming updates.
+
+Control speech queue (pause/resume/skip/repeat).
+
+Persist settings + history in SQLite via EF Core.
+
+Expose REST endpoints + (optional) SignalR to update the Angular UI in real time.
+
+3) Speech Service (C#)
+
+Responsibilities:
+
+Speak text with System.Speech.Synthesis (offline Windows voices).
+
+Maintain a queue with cancellation and “skip current”.
+
+Support:
+
+voice selection
+
+rate, volume
+
+per-role voice options (optional)
+
+4) Angular UI
+
+Responsibilities:
+
+Start/stop reading
+
+Toggle “read user prompts”, “read assistant replies”
+
+Voice settings + speed/volume
+
+Display recent captured messages and what’s queued
+
+Diagnostics: show what the extension extracted, and why something was skipped/deduped
+
+Message streaming and deduping (important)
+
+ChatGPT often streams assistant responses incrementally. You want to avoid reading partial text repeatedly.
+
+Recommended strategy:
+
+The extension emits “messageUpdate” events as text grows.
+
+Backend applies a stability window:
+
+Only speak when the message hasn’t changed for e.g. 800–1500ms, OR
+
+Speak sentence-by-sentence when new punctuation appears (optional advanced mode)
+
+Use identifiers:
+
+conversationId + messageDomId (if obtainable)
+
+Otherwise hash normalized text + role + approximate position
+
+Data model (SQLite + EF Core)
+
+AppSetting (Key, Value)
+
+SiteProfile (Site: chatgpt, selectorsVersion, enabled)
+
+ConversationSession (Id, Site, StartedAt, EndedAt)
+
+CapturedMessage (Id, SessionId, Role, Text, TextHash, SourceMessageId, CreatedAt, UpdatedAt, SpokeAt)
+
+SpeechEvent (Id, MessageId, Status, StartedAt, EndedAt, Error)
+
+Privacy modes:
+
+“Store full text” vs “Store hashes only”
+
+“Keep last N days/messages”
+
+APIs (example)
+
+Backend:
+
+POST /api/capture/event (from extension)
+
+GET /api/voices
+
+POST /api/speech/pause|resume|skip|repeat
+
+GET/PUT /api/settings
+
+GET /api/history
+
+Extension:
+
+Configurable backend port
+
+Health check: GET /api/health
+
+Security model (local-only, but still safe)
+
+Even though it’s local, you should protect the capture endpoint:
+
+Bind to 127.0.0.1 only
+
+Require an API key shared between extension and backend (stored in extension storage + backend config)
+
+Validate Origin and/or add a custom header like X-Reader-Token
+
+Rate limit basic abuse
+
+Milestones
+Milestone 1 — MVP (reliable reading)
+
+Extension extracts messages and posts to backend
+
+Backend dedupes and reads assistant messages aloud
+
+Angular basic UI for voice + start/stop + history
+
+Milestone 2 — Streaming & UX polish
+
+Stability window to avoid partial reads
+
+Hotkeys (global hotkeys can be backend-side; extension can also add page hotkeys)
+
+Repeat last / read selection / skip
+
+Milestone 3 — Resilience to DOM changes
+
+Selector fallback sets
+
+Diagnostics view: “found X messages; last selector used”
+
+Quick update mechanism (configurable selectors in backend DB)
+
+Milestone 4 — Packaging
+
+Local installer
+
+Auto-start (optional)
+
+Export/import settings
+
+Tech stack summary (what you asked for + extension)
+
+Backend: .NET 8, ASP.NET Core, C#
+
+Data: EF Core + SQLite
+
+Speech: System.Speech.Synthesis (Windows offline voices)
+
+UI: Angular
+
+Capture: Chrome/Edge Extension (Manifest V3) with content script + MutationObserver

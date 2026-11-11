@@ -1,0 +1,64 @@
+# Dependencies, SDK state, and caches
+node_modules/
+.dotnet/
+.npm-cache/
+.angular/
+.cache/
+
+# Build and test output (including local bin_verify* trees)
+bin*/
+obj*/
+dist/
+out-tsc/
+coverage/
+TestResults/
+artifacts/
+*.tsbuildinfo
+
+# Local API configuration; publish only the sanitized example
+/apps/api/appsettings.json
+/apps/api/appsettings.*.json
+!/apps/api/appsettings.example.json
+.env
+.env.*
+!.env.example
+*.local.json
+*.user
+*.suo
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Captured conversations, settings/credentials, and runtime logs
+*.db
+*.db-*
+*.db.*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.log
+logs/
+
+# Local screenshots and bug evidence can contain conversation text
+/bugs/
+__screenshots__/
+
+# Machine-specific editor and agent state
+.vs/
+.vscode/
+.idea/
+.codex/
+.agents/
+.history/
+
+# Temporary files and OS metadata
+tmp/
+temp/
+*.tmp
+*.bak
+*.zip
+.DS_Store
+Thumbs.db
+Desktop.ini
