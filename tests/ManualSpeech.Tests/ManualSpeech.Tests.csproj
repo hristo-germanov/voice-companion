@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.2" />
+    <Compile Include="../../apps/api/Controllers/HistoryController.cs" Link="HistoryController.cs" />
+    <Compile Include="../../apps/api/Controllers/SpeechController.cs" Link="SpeechController.cs" />
+    <Compile Include="../../apps/api/Data/AppDbContext.cs" Link="AppDbContext.cs" />
+    <Compile Include="../../apps/api/Data/PlaybackProgressSchema.cs" Link="PlaybackProgressSchema.cs" />
+    <Compile Include="../../apps/api/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../apps/api/Services/ISpeechQueue.cs" Link="ISpeechQueue.cs" />
+    <Compile Include="../../apps/api/Services/EdgeSpeechText.cs" Link="EdgeSpeechText.cs" />
+    <Compile Include="../../apps/api/Options/SpeechOptions.cs" Link="SpeechOptions.cs" />
+    <Compile Include="../../apps/api/Services/BufferedSpeech.cs" Link="BufferedSpeech.cs" />
+    <Compile Include="../../apps/api/Services/SpeechWorkQueue.cs" Link="SpeechWorkQueue.cs" />
+  </ItemGroup>
+</Project>

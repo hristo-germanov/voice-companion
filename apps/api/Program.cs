@@ -39,6 +39,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(connectionString);
 });
 
+builder.Services.AddSingleton<KokoroSpeechClient>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<KokoroSpeechClient>());
 builder.Services.AddSingleton<ISpeechQueue, SpeechQueue>();
 builder.Services.AddSingleton<IMessageDeduper, MessageDeduper>();
 builder.Services.AddSingleton<IStabilityBuffer, StabilityBuffer>();
@@ -51,6 +53,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
+    PlaybackProgressSchema.Ensure(db);
 }
 
 app.UseCors("LocalExtension");

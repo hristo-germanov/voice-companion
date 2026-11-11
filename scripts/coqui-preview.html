@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Coqui XTTS-v2 · Local preview</title>
+<style>
+body{font:16px/1.6 "Segoe UI",sans-serif;background:#f6f5f9;color:#302a42;margin:0;padding:40px 20px}main{max-width:800px;margin:auto}h1{letter-spacing:-1px}p{color:#81768e}article{background:white;border:1px solid #e4dfee;border-radius:16px;padding:24px;margin:20px 0}audio{width:100%;margin-top:12px}.metrics{display:flex;flex-wrap:wrap;gap:24px;font-size:14px}.metrics strong{display:block;color:#7652bf;font-size:24px}small{color:#8b7a9e}a{color:#7652bf}h2{font-size:19px;margin-top:0}
+</style>
+<main><small>VOICE COMPANION · LOCAL EXPERIMENT</small><h1>Listen to Coqui XTTS-v2.</h1><p>A built-in voice, synthetic English text, and speech generated on your computer. No Edge service is used.</p><p id="status">The benchmark is being prepared…</p><div id="samples"></div><p>Time to first audio is measured during streaming generation. These players play recordings that have already been saved.</p><a href="http://localhost:4200/">← Back to the application</a></main>
+<script>
+const comparisonLink=document.createElement('a');comparisonLink.href='comparison.html';comparisonLink.textContent='Compare 8 voices: XTTS and Kokoro →';document.querySelector('h1').after(comparisonLink);
+async function update(){
+ try{
+  const response=await fetch('metrics.json',{cache:'no-store'});if(!response.ok)return;
+  const data=await response.json();document.getElementById('status').textContent=`Voice: ${data.speaker} · ${data.device.toUpperCase()} · Model loading: ${data.model_load_seconds} sec`;
+  const target=document.getElementById('samples');
+  for(const sample of data.samples){
+   if(document.getElementById(sample.name))continue;
+   const card=document.createElement('article');card.id=sample.name;
+   const title=document.createElement('h2');title.textContent=({'short-cold':'First generation','short-warm':'After warm-up','paragraph':'Longer text'})[sample.name]||sample.name;card.append(title);
+   const metrics=document.createElement('div');metrics.className='metrics';
+   for(const [value,label] of [[sample.first_audio_seconds+' sec','Time to first audio'],[sample.generation_seconds+' sec','Total generation'],[sample.audio_seconds+' sec','Recording duration'],[sample.real_time_factor,'RTF · below 1 means faster than playback']]){const item=document.createElement('div');const strong=document.createElement('strong');strong.textContent=value;item.append(strong,document.createTextNode(label));metrics.append(item)}
+   const player=document.createElement('audio');player.controls=true;player.preload='metadata';player.src=sample.name+'.wav';card.append(metrics,player);target.append(card);
+  }
+ }catch(e){document.getElementById('status').textContent='The benchmark is being prepared…'}
+}
+update();setInterval(update,5000);
+</script></html>

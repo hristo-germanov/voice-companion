@@ -42,10 +42,10 @@ For browser capture, load `apps/extension` as an unpacked extension and set its 
 | Mode | Requires | Text processing |
 | --- | --- | --- |
 | Local | Installed Windows speech voices | On this computer |
-| Edge | `edge-tts` on PATH, network, Windows audio | Online speech service |
+| Kokoro (default) | Local Python environment and Kokoro-82M; Heart US / Bella US | On this computer |
 | Cloud | Configured API key, network, Windows audio | OpenAI speech endpoint |
 
-The UI initially displays Edge. Explicitly select a mode to persist it before playback; see [default behavior](docs/configuration.md#mode-default-caveats).
+Heart US is the default voice. Select Bella US in **Voice settings** to switch. Run `powershell -File scripts/setup-kokoro.ps1` once for the local model and Python dependencies (`-CpuOnly` for a machine without CUDA). The API keeps the model loaded on loopback port 17835; text stays on this computer. Old Edge settings now select Kokoro.
 
 ## Repository layout
 

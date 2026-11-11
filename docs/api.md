@@ -11,18 +11,24 @@ Only `POST /api/capture/event` checks `X-Reader-Token`, which must match `Api:Ap
 | GET | `/api/health` | `{"status":"ok"}` |
 | POST | `/api/capture/event` | Saves/updates capture; returns `messageId`, `shouldSpeak` |
 | GET | `/api/history?limit=50` | Recent captured messages, newest ID first; limit clamped to 1–500 |
+| DELETE | `/api/history/{id}` | Deletes the text, saved progress and associated speech events; cancels its active playback and removes all queued copies. Returns 204, or 404 when absent. |
 | GET | `/api/settings` | All stored settings ordered by key, including credentials |
 | PUT | `/api/settings` | Upserts one setting and returns `id`, `key`, `value` |
 | GET | `/api/voices` | Installed Windows voices: `name`, `gender`, `culture`, `age`; may be empty |
 | GET | `/api/voices/edge-en-us` | EN-US Edge voices: `shortName`, `locale`, `gender`, `friendlyName`; may be fallback data |
 | GET | `/api/voices/edge-en-eu` | Compatibility alias for the same EN-US list |
 | POST | `/api/speech/play/{messageId}` | Queues a stored message; returns `queued: true`, `messageId` |
+| POST | `/api/speech/text` | Saves manual text and queues it; body `{"text":"Read this aloud"}`, returns `queued: true`, `messageId`; blank or over 50,000 characters returns 400 |
 | POST | `/api/speech/pause` | Requests pause; HTTP 200 with no body |
 | POST | `/api/speech/resume` | Requests resume; HTTP 200 with no body |
 | POST | `/api/speech/stop` | Stops active playback and drains the channel; HTTP 200 |
 | POST | `/api/speech/skip` | Requests skipping current item; HTTP 200 |
 | POST | `/api/speech/repeat` | Requeues last attempted item when available; HTTP 200 |
 | GET | `/api/speech/tracker` | In-memory playback snapshot |
+| GET | `/api/speech/queue` | Ordered waiting entries: queue `id`, `messageId`, text, buffering status, prepared/total parts and voice |
+| DELETE | `/api/speech/queue/{id}` | Removes and cancels one waiting entry; 404 if already started/removed |
+| DELETE | `/api/speech/queue` | Clears waiting entries while preserving current playback |
+| POST | `/api/speech/seek` | Body `{"seconds":15,"relative":true}` or absolute seconds; seeks in buffered Kokoro audio and returns tracker |
 | GET | `/api/speech/diagnostics` | Stored mode and latest speech event, or null event |
 | POST | `/api/speech/diagnostics/clear-latest-error` | Clears latest event's error text only |
 
@@ -60,6 +66,10 @@ Example success (IDs vary):
 
 ## History and tracker
 
+History also returns `playbackPositionSeconds`, `playbackDurationSeconds`, `playbackProgressPercent` and `playbackCompleted`. Partial progress is saved about every two seconds and at Pause, Stop, Skip and seek. Natural completion is stored as 100%. Playing an incomplete stored message resumes its saved audio position; append `?restart=true` to start over. Waiting queues and generated audio are session-only, while history/progress survives restart.
+
+For Kokoro the tracker includes `currentWord` (`start`, `length` in UTF-16 offsets), `positionSeconds`, `bufferedSeconds`, and `isFullyBuffered`. Word timestamps come from Kokoro and are selected using the audio device's played sample position. Seek clamps to the generated prefix until the whole recording is buffered. The UI polls this lightweight tracker every 100 ms; history/diagnostics refresh less frequently.
+
 History returns an array of `id`, `role`, `text`, `sourceMessageId`, `createdAt`, `updatedAt`, and nullable `spokeAt`. Timestamps are serialized date/time values. `spokeAt` records successful completion, not queue entry.
 
 An idle tracker looks like:
@@ -80,7 +90,7 @@ An idle tracker looks like:
 }
 ```
 
-The current message ID is a string. Segment indexes during segmented playback start at 1. Position is an estimate rather than an audio timestamp or exact word alignment. The current repeat path does not increment the queue counter, so `queuedItems` may undercount repeat requests.
+The current message ID is a string. Segment indexes during segmented playback start at 1. Position is an estimate rather than an audio timestamp or exact word alignment. The tracker also includes `isPreparingAudio`, which distinguishes Edge generation/buffering from playback. Long Edge messages use bounded chunks and prefetch the next chunk while the current audio plays. Repeat requests are ignored while playback is active, paused, or already queued.
 
 Diagnostics returns `{"mode":"local","latestEvent":null}` before events/settings exist. When present, `latestEvent` has `id`, `messageId`, `status`, `startedAt`, `endedAt`, and `error`. The reported mode comes from the saved setting with a Local fallback; it is not a live worker-mode measurement.
 

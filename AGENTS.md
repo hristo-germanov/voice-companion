@@ -13,6 +13,7 @@ This repo uses role-based agents with narrow scopes. Each role focuses on its co
 - State assumptions and constraints at the top of your response.
 - If blocked, ask targeted questions and propose the smallest unblock plan.
 - When editing code, update or add tests only when they are directly impacted.
+- English-only application UI: all application-authored user-facing text must be in English, including labels, buttons, navigation, statuses, notifications, errors, tooltips, placeholders, and accessibility text. This also applies to the browser extension and companion/demo screens. The conversation language does not change this requirement; do not add Bulgarian or mixed-language UI copy. Preserve user-provided text in its original language. When adding or editing UI strings, check the affected screen for compliance with this rule.
 
 ## Roles
 

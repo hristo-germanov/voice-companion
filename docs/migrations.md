@@ -6,6 +6,7 @@ Reviewed on 2026-11-11. The current application uses EF Core 8.0.2 with SQLite. 
 
 - On a fresh database, startup creates the schema from `AppDbContext` and the model classes.
 - `EnsureCreated()` does not upgrade an existing schema after model changes and does not create a migration history.
+- The playback-progress feature adds a narrow, idempotent startup upgrade in `PlaybackProgressSchema.Ensure`: four progress columns are added to `CapturedMessages` inside a transaction when missing. Existing text/settings are preserved, and older successfully spoken entries are initially marked 100%. Repeated startup preserves subsequently saved partial progress. Other schema changes still require an explicit migration plan.
 - The default connection is `Data Source=app.db`; launch from `apps/api` to use `apps/api/app.db`.
 - Settings, captured messages, sessions, site profiles, and speech events share this database.
 

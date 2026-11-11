@@ -1,5 +1,7 @@
 # Dependencies, SDK state, and caches
 node_modules/
+__pycache__/
+*.pyc
 .dotnet/
 .npm-cache/
 .angular/

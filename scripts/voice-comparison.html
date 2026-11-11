@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Local voice comparison</title>
+<style>
+*{box-sizing:border-box}body{font:15px/1.6 "Segoe UI",sans-serif;background:#f6f5f9;color:#302a42;margin:0;padding:40px 20px}main{max-width:1050px;margin:auto}h1{font-size:34px;letter-spacing:-1px;margin-bottom:8px}h2{font-size:18px;margin:0}p{color:#81768e}.intro{max-width:720px}small{color:#8b7a9e;letter-spacing:1px}blockquote{background:#fff;border-left:3px solid #a48be4;padding:20px 24px;margin:24px 0;border-radius:4px 12px 12px 4px;color:#625571}.filters{display:flex;gap:10px;margin:24px 0}.filters button{padding:9px 18px;border:1px solid #e0d7ed;border-radius:8px;background:#fff;color:#78638f;cursor:pointer;font:inherit}.filters .selected{background:#7754c5;color:#fff;border-color:#7754c5}.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}article{background:#fff;border:1px solid #e4dfee;border-radius:14px;padding:22px}.badge{display:inline-block;background:#f2edfa;color:#9374bb;border-radius:5px;font-size:10px;letter-spacing:1px;padding:3px 7px;margin-bottom:9px}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0;font-size:11px;color:#9a8aaa}.stats strong{display:block;color:#6d4eb2;font-size:21px;font-weight:600}audio{width:100%;height:38px}.note{font-size:12px;margin-top:24px}a{color:#7652bf}.loading{color:#9c8baa}@media(max-width:650px){body{padding:24px 16px}.cards{grid-template-columns:1fr}h1{font-size:27px}}
+</style>
+<main>
+<small>VOICE COMPANION · CHOOSE BY LISTENING</small>
+<h1>One text. Different voices.</h1>
+<p class="intro">A local comparison of XTTS-v2 and Kokoro-82M on your graphics card. All samples use the same English text, normal speed, and a warmed-up model.</p>
+<blockquote id="text">Loading text…</blockquote>
+<nav class="filters" aria-label="Model"><button class="selected" data-filter="all" aria-pressed="true">All</button><button data-filter="xtts" aria-pressed="false">XTTS-v2</button><button data-filter="kokoro" aria-pressed="false">Kokoro</button></nav>
+<p id="status" class="loading">Generating samples…</p><div class="cards" id="cards"></div>
+<p class="note">Model loading and voice downloads are excluded. “First audio” measures the first returned audio block: XTTS streams audio, while Kokoro returns larger completed parts. These players play saved WAV files. Playing another sample pauses the previous one.</p>
+<p class="note">Terms: <a href="https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt">XTTS-v2 · CPML</a> · <a href="https://huggingface.co/hexgrad/Kokoro-82M">Kokoro · Apache 2.0</a></p>
+<p><a href="/">← Original benchmark</a> · <a href="http://localhost:4200/">Main application</a></p>
+</main>
+<script>
+let filter='all';
+function applyFilter(){document.querySelectorAll('article').forEach(card=>card.hidden=filter!=='all'&&card.dataset.engine!==filter)}
+document.querySelectorAll('[data-filter]').forEach(button=>button.addEventListener('click',()=>{filter=button.dataset.filter;document.querySelectorAll('[data-filter]').forEach(item=>{item.classList.toggle('selected',item===button);item.setAttribute('aria-pressed',String(item===button))});applyFilter()}));
+const names={af_heart:'Heart · US',af_bella:'Bella · US',am_michael:'Michael · US',bm_george:'George · UK'};
+async function update(){try{
+ const response=await fetch('comparison.json',{cache:'no-store'});if(!response.ok)return;const data=await response.json();
+ document.getElementById('text').textContent=data.text;
+ document.getElementById('status').textContent=`${data.samples.length} of 8 samples · ${data.gpu||data.device}`;
+ for(const sample of data.samples){
+  if(document.getElementById(sample.name))continue;
+  const card=document.createElement('article');card.id=sample.name;card.dataset.engine=sample.engine;
+  const badge=document.createElement('span');badge.className='badge';badge.textContent=sample.engine==='xtts'?'XTTS-v2':'KOKORO-82M';
+  const title=document.createElement('h2');title.textContent=names[sample.voice]||sample.voice;
+  const stats=document.createElement('div');stats.className='stats';
+  for(const [value,label] of [[sample.first_audio_seconds+' s','First audio'],[sample.generation_seconds+' s','Generation'],[sample.audio_seconds+' s','Duration']]){const field=document.createElement('div');const strong=document.createElement('strong');strong.textContent=value;field.append(strong,document.createTextNode(label));stats.append(field)}
+  const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.src=sample.name+'.wav';audio.setAttribute('aria-label',title.textContent);audio.addEventListener('play',()=>document.querySelectorAll('audio').forEach(other=>{if(other!==audio)other.pause()}));
+  card.append(badge,title,stats,audio);document.getElementById('cards').append(card);
+ }applyFilter();
+}catch(error){document.getElementById('status').textContent='The comparison is being prepared…'}}
+update();setInterval(update,5000);
+</script>
+</html>

@@ -11,4 +11,8 @@ public sealed class CapturedMessage
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? SpokeAt { get; set; }
+    public double PlaybackPositionSeconds { get; set; }
+    public double PlaybackDurationSeconds { get; set; }
+    public int PlaybackProgressPercent { get; set; }
+    public bool PlaybackCompleted { get; set; }
 }

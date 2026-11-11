@@ -25,7 +25,10 @@ ASP.NET Core also uses its standard environment-variable configuration, for exam
 | `ConnectionStrings:AppDb` | `Data Source=app.db`; relative to the working directory |
 | `Stability:WindowMs` | `1200`; worker minimum is 300 ms |
 | `Stability:PollMs` | `250`; worker minimum is 100 ms |
-| `Speech:Mode` | `edge` in configuration; see fallback caveat below |
+| `Speech:Mode` | `kokoro`; saved settings override it |
+| `Speech:KokoroVoice`, `Speech:KokoroSpeed` | `af_heart`, `1.0` |
+| `Speech:KokoroPythonPath`, `Speech:KokoroWorkerPath` | Relative to API content root: `../../artifacts/coqui-venv/Scripts/python.exe`, `../../scripts/kokoro-worker.py` |
+| `Speech:KokoroPort` | Loopback-only port `17835` for the resident worker |
 | `Speech:Rate`, `Speech:Volume`, `Speech:Voice` | `0`, `100`, empty (Windows default voice) |
 | `Speech:EdgeVoice`, `Speech:EdgeRatePercent` | `en-US-AndrewMultilingualNeural`, `0` |
 | `Speech:CloudModel`, `Speech:CloudVoice`, `Speech:CloudSpeed` | `gpt-4o-mini-tts`, `alloy`, `1.0` |
@@ -38,7 +41,9 @@ All values are strings. `PUT /api/settings` upserts a key/value pair; it require
 
 | Key | Default / accepted range | Use |
 | --- | --- | --- |
-| `speech.mode` | `local`, `edge`, `cloud`; see caveat | Worker selection |
+| `speech.mode` | `kokoro` (default), `local`, `cloud`; old `edge` maps to Kokoro | Worker selection |
+| `speech.kokoro.voice` | `af_heart` (Heart US) or `af_bella` (Bella US); Heart fallback | Local Kokoro voice |
+| `speech.kokoro.speed` | `1.0`; 0.5 through 2.0 | Kokoro speed multiplier |
 | `speech.read_assistant` | `true` | Automatic assistant reading eligibility |
 | `speech.read_user` | `false` | Capture eligibility flag; automatic user playback is currently blocked by the stability worker |
 | `speech.voice` | Empty | Windows voice name |
@@ -51,13 +56,11 @@ All values are strings. `PUT /api/settings` upserts a key/value pair; it require
 | `speech.cloud.voice` | `alloy` | Voice sent to cloud speech endpoint |
 | `speech.cloud.speed` | `1.0`; 0.25 through 4.0 | Cloud speed |
 
-## Mode default caveats
+## Mode defaults
 
-The UI initially displays Edge, and the options/configuration also name Edge. However, `SpeechQueue.LoadRuntimeSettings` maps every configured mode except Cloud to Local before applying a saved `speech.mode` override. With no saved override, the worker can use Local while the UI shows Edge. The diagnostics endpoint independently falls back to `local` when the setting is absent.
+The UI and backend default to Kokoro with Heart US. Bella US is the other supported Kokoro voice. Saved Windows and Cloud modes are preserved. Old Edge mode values map to Kokoro; the dashboard no longer requests Edge voice lists. Voice and speed settings are applied when a queued message starts, so a change does not restart current playback.
 
-Explicitly select a different mode, then your desired mode in the UI on first setup. This writes `speech.mode`. Alternatively, use the settings API example in the [API reference](api.md).
-
-There is also a UI loading issue: `parseSpeechMode` maps a saved `local` value back to Edge on reload. If Local is desired, select it again after reload; the stored backend setting can still be Local despite the displayed value. These behaviors are documented here without changing product code.
+Kokoro is a resident Python process owned by the API. It binds only to loopback, requires a per-process token on synthesis requests, and runs from local model files in offline mode. Stop cancels the API request/playback; any small in-flight generation finishes locally, and the worker stays loaded. Normal API shutdown stops its worker.
 
 ## Changing ports
 

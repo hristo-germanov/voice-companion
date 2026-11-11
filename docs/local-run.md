@@ -18,7 +18,7 @@ Keep two terminals open, one for each service. Before starting, check whether th
 
 - Windows, PowerShell, Node.js/npm, and a .NET SDK capable of building `net8.0`, plus the .NET 8 ASP.NET Core runtime.
 - The frontend was successfully started with Node.js `v22.14.0`.
-- Edge speech mode requires the `edge-tts` executable on the API process's PATH and network access. The executable was available during the verified launch; audible speech playback was not tested. If needed, install it with `py -m pip install edge-tts`, ensure the Python Scripts directory is on PATH, and restart the API terminal.
+- Kokoro is the default engine, with Heart US and Bella US. Install Python 3.10 and run `powershell -File scripts/setup-kokoro.ps1` from the repository root once. It creates an isolated environment and downloads the model (several GB including GPU dependencies). Use `-CpuOnly` for CPU-only PyTorch. After setup, synthesis runs offline. The API starts and warms the Python worker automatically; the first load can take around 15 seconds on the tested machine, while subsequent requests reuse it.
 
 ## Normal startup
 
@@ -108,7 +108,7 @@ For an agent running services in tool sessions, retain the session IDs and stop 
 - **Port is occupied:** check the existing service before starting another. If Angular offers another port, stop and resolve port 4200 instead; another port would require configuration changes.
 - **Build reports a locked executable:** stop the running API, build, and restart.
 - **Missing executable/assets:** perform first setup/build above, or use the bootstrap script.
-- **Edge playback fails:** run `Get-Command edge-tts` and `edge-tts --version` in the API terminal; check its logs and the frontend speech diagnostics. Restart the API after changing PATH.
+- **Kokoro unavailable:** run the setup script, check that `artifacts/coqui-venv/Scripts/python.exe` and the model files under `artifacts/kokoro-model-files` exist, and restart the API. Keep loopback port 17835 available. Paths and port can be overridden with `Speech:KokoroPythonPath`, `Speech:KokoroWorkerPath`, and `Speech:KokoroPort`.
 
 ## Browser capture (optional)
 
