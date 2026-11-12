@@ -15,25 +15,15 @@ A Windows companion that captures messages from ChatGPT in Chrome or Edge, store
 
 ## Quick launch
 
-Use two PowerShell terminals. These commands assume dependencies and the API build already exist; see the [local run guide](docs/local-run.md) for first setup.
-
-On a fresh clone, copy `apps/api/appsettings.example.json` to `apps/api/appsettings.json` and set a private capture token before building. The real configuration and database are excluded from Git.
-
-API:
+Double-click `start.cmd` in the repository root, or run:
 
 ```powershell
-Set-Location 'C:\Work\Codex\Text to speach\apps\api'
-& '.\bin\Debug\net8.0\ChatGPTVoiceCompanion.Api.exe'
+.\start.cmd
 ```
 
-Frontend:
+The launcher starts the API and dashboard in the background, opens http://localhost:4200/, and reuses services that are already running. It builds the API when needed and installs missing or updated frontend dependencies. Logs are saved under `artifacts/launcher/`. Closing the launcher window leaves the services running.
 
-```powershell
-Set-Location 'C:\Work\Codex\Text to speach\apps\web'
-npm.cmd start -- --host localhost --port 4200
-```
-
-Open [the dashboard](http://localhost:4200/). Check [API health](http://127.0.0.1:17832/api/health) for `{"status":"ok"}`. Press `Ctrl+C` in each terminal to stop.
+For a terminal-only launch, use `.\start.cmd -NoBrowser`. Install the prerequisites and Kokoro model once as described in the [local run guide](docs/local-run.md).
 
 For browser capture, load `apps/extension` as an unpacked extension and set its API key to match `Api:ApiKey` in `apps/api/appsettings.json`. See the [user guide](docs/user-guide.md).
 

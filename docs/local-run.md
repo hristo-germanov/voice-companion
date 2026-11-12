@@ -1,6 +1,6 @@
 # Run the app locally on Windows
 
-Verified on 2026-11-11. Run commands in PowerShell. The workspace is `C:\Work\Codex\Text to speach`.
+Launcher verified on 2026-11-12 (cold startup, repeated startup, and launch from a different working directory). Run commands in PowerShell. The workspace is `C:\Work\Codex\Text to speach`.
 
 For daily operation after startup, see the [User guide](user-guide.md). For settings and default-mode caveats, see [Configuration](configuration.md).
 
@@ -12,7 +12,7 @@ For daily operation after startup, see the [User guide](user-guide.md). For sett
 | .NET API | http://127.0.0.1:17832 | Local database and speech service |
 | Health check | http://127.0.0.1:17832/api/health | Returns `{"status":"ok"}` |
 
-Keep two terminals open, one for each service. Before starting, check whether the services already respond using the verification commands below; reuse an existing working instance.
+The one-command launcher runs both services in the background and reuses existing healthy instances. Manual startup in two terminals is also available below.
 
 ## Prerequisites
 
@@ -20,7 +20,23 @@ Keep two terminals open, one for each service. Before starting, check whether th
 - The frontend was successfully started with Node.js `v22.14.0`.
 - Kokoro is the default engine, with Heart US and Bella US. Install Python 3.10 and run `powershell -File scripts/setup-kokoro.ps1` from the repository root once. It creates an isolated environment and downloads the model (several GB including GPU dependencies). Use `-CpuOnly` for CPU-only PyTorch. After setup, synthesis runs offline. The API starts and warms the Python worker automatically; the first load can take around 15 seconds on the tested machine, while subsequent requests reuse it.
 
-## Normal startup
+## One-command startup
+
+From the repository root:
+
+```powershell
+.\start.cmd
+# Start without opening a browser:
+.\start.cmd -NoBrowser
+# Or invoke PowerShell directly from any working directory:
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\Work\Codex\Text to speach\scripts\start-app.ps1'
+```
+
+You can also double-click `start.cmd` in File Explorer. The launcher creates local configuration with a private capture token if missing, builds missing or changed API output, installs missing/updated frontend dependencies, and waits for both services before opening the dashboard. Existing configuration and history are preserved. The Kokoro setup above is a separate one-time prerequisite; the launcher does not download voice models.
+
+Services run in hidden background processes and keep running after the launcher closes. Startup logs are under `artifacts/launcher/`. If a port is occupied by an unresponsive service, the launcher reports the conflict instead of starting a duplicate. Running it again reuses healthy services; restart a running API manually after backend changes. Closing the browser does not stop audio services. Use the verified-PID instructions under Stop and restart to stop background services.
+
+## Normal startup (manual)
 
 Terminal 1: run the existing API build directly. This avoids SDK startup overhead and was the successful API launch method in the verified session.
 
