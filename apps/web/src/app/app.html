@@ -1,13 +1,11 @@
 <main class="app-shell">
   <header class="topbar">
     <a class="brand" href="/" aria-label="Voice Companion home"><span class="brand-mark" aria-hidden="true">◖◗</span> Voice Companion</a>
-    <div class="header-actions">
-      <button class="secondary" type="button" (click)="settingsDialog.showModal()">⚙ Voice settings</button>
-    </div>
+
   </header>
 
   <div class="workspace">
-    <div class="page-heading"><div><p class="eyebrow">YOUR PERSONAL LISTENING SPACE</p><h1>Turn words into listening.</h1><p class="muted">Paste something to read, or listen to your ChatGPT conversations.</p></div></div>
+    <div class="page-heading"><div><p class="eyebrow">YOUR PERSONAL LISTENING SPACE</p><h1>{{ activeTab() === 'manual' ? 'Listen to your text.' : 'Listen to your ChatGPT conversations.' }}</h1><p class="muted">{{ activeTab() === 'manual' ? 'Paste a text, press Play now, and follow along as it is read.' : 'Capture messages with the browser extension and choose which ones are read aloud.' }}</p></div></div>
     @if (!connected()) { <p class="error-note" role="status">Cannot connect to the audio service. <button type="button" class="text-button" (click)="refreshAll()" [disabled]="busy()">Retry</button></p> }
     <nav class="tabs" aria-label="Text source">
       <button type="button" [class.selected]="activeTab() === 'manual'" [attr.aria-current]="activeTab() === 'manual' ? 'page' : null" (click)="activeTab.set('manual')">▤ Paste text</button>
@@ -17,35 +15,82 @@
     <div class="listening-layout">
       <div class="content-column">
         @if (activeTab() === 'manual') {
+          @if (composerOpen()) {
           <section class="card composer" aria-labelledby="composer-title">
             <div class="section-heading"><div><p class="eyebrow">MAKE TIME TO LISTEN</p><h2 id="composer-title">What would you like to hear?</h2></div><span class="subtle-tag">Text → Audio</span></div>
             <label class="sr-only" for="manual-text">Text to read aloud</label>
-            <textarea id="manual-text" rows="9" aria-describedby="manual-help manual-count" [value]="manualText()" (input)="manualText.set($any($event.target).value)" placeholder="Paste an article, a message, or a thought…"></textarea>
+            <textarea #manualInput id="manual-text" rows="9" aria-describedby="manual-help manual-count" [value]="manualText()" (input)="manualText.set($any($event.target).value)" placeholder="Paste an article, a message, or a thought…"></textarea>
             <div class="composer-meta"><span id="manual-help">Saved in your listening history.</span><span id="manual-count">{{ manualText().length }} / 50,000</span></div>
             @if (manualText().length > manualTextLimit) { <p class="error-note">Please shorten your text to 50,000 characters.</p> }
-            <div class="composer-footer"><button class="text-button" type="button" (click)="clearManualText()" [disabled]="manualBusy() || !manualText()">Clear text</button><button class="primary" type="button" (click)="readManualText()" [disabled]="manualBusy() || manualTextActive() || !connected() || !manualText().trim() || manualText().length > manualTextLimit">{{ manualTextActive() ? 'Currently reading' : manualBusy() ? 'Adding…' : speechTracker()?.isSpeaking ? '＋ Add to queue' : '▶ Read aloud' }}</button></div>
+            <div class="composer-footer">
+              <button class="text-button" type="button" (click)="clearManualText()" [disabled]="manualBusy() || !manualText()">Clear text</button>
+              <div class="composer-actions">
+                @if (hasActivePlayback()) { <button class="secondary" type="button" (click)="readManualText('queue')" [disabled]="manualBusy() || manualTextActive() || !connected() || !manualText().trim() || manualText().length > manualTextLimit">Add to queue</button> }
+                <button class="primary" type="button" (click)="readManualText('now')" [disabled]="manualBusy() || manualTextActive() || !connected() || !manualText().trim() || manualText().length > manualTextLimit">{{ manualTextActive() ? 'Currently reading' : manualBusy() ? 'Adding...' : 'Play now' }}</button>
+              </div>
+            </div>
+            @if (hasActivePlayback()) { <p class="hint">Play now switches to this text and saves your current progress.@if (pendingSpeech().length) { Waiting texts will be cleared from the queue. }</p> }
             @if (manualStatus()) { <p class="notice" role="status">{{ manualStatus() }}</p> }
+            @if (readerText()) { <button type="button" class="text-button" (click)="composerOpen.set(false)">Back to reading</button> }
           </section>
+          } @else {
+            <div class="new-text-bar"><button #newTextButton type="button" class="secondary" (click)="showComposer()">+ New text</button><span class="muted" role="status">{{ manualStatus() }}</span></div>
+          }
         } @else {
           <section class="card capture-card">
-            <p class="eyebrow">FROM YOUR CONVERSATIONS</p><h2>ChatGPT, hands free.</h2><p class="muted">New messages from the browser extension appear below. Choose what should be read automatically.</p>
+            <h2>Automatic reading</h2><p class="muted">Choose whether replies, prompts, or both are read aloud. Captured messages are saved below.</p>
             <div class="capture-options"><label class="toggle"><input type="checkbox" [checked]="readAssistant()" (change)="setReadAssistant($any($event.target).checked)" /><span>Read assistant replies<small>Listen as replies arrive</small></span></label><label class="toggle"><input type="checkbox" [checked]="readUser()" (change)="setReadUser($any($event.target).checked)" /><span>Read my prompts<small>Include your own messages</small></span></label></div>
-            <details class="help-details"><summary>How to connect ChatGPT</summary><p>Load the extension from <code>apps/extension</code> in Chrome or Edge. In its Options, set port 17832 and the capture token from your local configuration. Then refresh your ChatGPT tab.</p></details>
+            <details class="help-details chatgpt-help">
+              <summary>How does ChatGPT listening work?</summary>
+              <p>Keep Voice Companion running while you use ChatGPT in Chrome or Edge. The extension sends messages here; the switches above control which messages are read automatically.</p>
+              <h3>One-time setup</h3>
+              <ol>
+                <li>Open <code>chrome://extensions</code> or <code>edge://extensions</code>, enable <strong>Developer mode</strong>, choose <strong>Load unpacked</strong>, and select the <code>apps/extension</code> folder.</li>
+                <li>Open the extension's <strong>Options</strong>. Set <strong>Backend Port</strong> to <code>17832</code> and <strong>API Key</strong> to the <code>Api:ApiKey</code> value in your local <code>apps/api/appsettings.json</code>.</li>
+                <li>Enable capture, select <strong>Save</strong>, and refresh your ChatGPT tab.</li>
+              </ol>
+              <h3>While chatting</h3>
+              <p>Send a message in ChatGPT. Captured messages appear below, and enabled replies are added to the playback queue once their text stops changing. Use Play now to switch to a saved message, or Add to queue to listen later.</p>
+              <p>Visible messages may also be captured when you open a conversation. Turn off capture in the extension to stop sending messages here; the reading switches only control automatic audio.</p>
+              <p><strong>No messages arriving?</strong> Check that the extension is enabled, confirm its port and API key, then refresh the ChatGPT tab.</p>
+            </details>
           </section>
         }
 
-        @if (speechTracker()?.currentText) {
-          <section class="card reader-panel" aria-labelledby="reader-heading">
-            <div class="section-heading">
-              <h2 id="reader-heading">Progress: {{ playbackProgress() }}%</h2>
-
-              <label class="follow-toggle" [style.color]="autoScroll() ? '#16a34a' : '#a39e9e'" [style.fontWeight]="autoScroll() ? '600' : '400'">
-                <input type="checkbox" [checked]="autoScroll()" (change)="autoScroll.set($any($event.target).checked)"/>Highlight {{ autoScroll() ? 'ON' : 'OFF' }}
-              </label>
-            </div>
-            <div #reader class="word-reader" aria-label="Highlighted word"><span>{{ trackerHighlight().before }}</span><mark>{{ trackerHighlight().current }}</mark><span>{{ trackerHighlight().after }}</span></div>
-          </section>
+        <!-- Reading text and playback controls share one card. -->
+      @if (readerText() || speechTracker()?.currentMessageId) {
+      <section class="player card reader-panel" aria-labelledby="reader-heading">
+        <div class="section-heading">
+          <div><p class="eyebrow">NOW LISTENING</p><h2 id="reader-heading">Reading space</h2></div>
+          @if (readerText()) { <label class="follow-toggle"><input type="checkbox" [checked]="autoScroll()" (change)="autoScroll.set($any($event.target).checked)" /> Follow along</label> }
+        </div>
+        @if (readerText()) {
+          <div #reader class="word-reader" aria-label="Reading text"><span>{{ readerHighlight().before }}</span><mark>{{ readerHighlight().current }}</mark><span>{{ readerHighlight().after }}</span></div>
+        } @else { <p class="reader-empty muted">Choose a text from your history or paste something above to start listening.</p> }
+        <div class="reader-footer">
+          <p class="reader-status" role="status">{{ readerStatus() }}</p>
+        <div class="player-controls"><button type="button" class="player-main" [disabled]="!connected() || playbackBusy() || (!speechTracker()?.currentMessageId && !readerItem())" (click)="toggleReaderPlayback()" [attr.aria-label]="speechTracker()?.currentMessageId ? (speechTracker()?.isPaused ? 'Resume reading' : 'Pause reading') : readerItem()?.playbackCompleted ? 'Replay text' : 'Resume reading'">{{ speechTracker()?.currentMessageId ? (speechTracker()?.isPaused ? 'Resume' : 'Pause') : readerItem()?.playbackCompleted ? 'Replay' : 'Resume' }}</button><button type="button" class="player-stop" aria-label="Stop reading" title="Stop reading" (click)="stop()" [disabled]="!speechTracker()?.currentMessageId && !(speechTracker()?.queuedItems ?? 0)"><svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg><span>Stop</span></button></div>
+        </div>
+        <div class="seek-controls"><button class="secondary" type="button" (click)="seekAudio(-15, true)" [disabled]="!timelineDuration()">−15 sec</button><button class="secondary" type="button" (click)="seekAudio(15, true)" [disabled]="!timelineDuration()">+15 sec</button></div>
+        <label class="sr-only" for="audio-position">Audio position</label>
+        <input id="audio-position" class="audio-seek" type="range" min="0" [max]="timelineDuration() || 100" step="0.1" [value]="timelineDuration() ? (seekDraft() ?? speechTracker()?.positionSeconds ?? 0) : readerProgress()" (input)="previewSeek($any($event.target).value)" (change)="commitSeek($any($event.target).value)" (pointercancel)="seekDraft.set(null)" [disabled]="!timelineDuration()" [attr.aria-valuetext]="timelineDuration() ? formatTime(seekDraft() ?? speechTracker()?.positionSeconds) + ' of ' + formatTime(timelineDuration()) : readerStatus()" />
+        <div class="time-caption"><span>{{ formatTime(seekDraft() ?? speechTracker()?.positionSeconds) }}</span><span>{{ timelineDuration() ? formatTime(timelineDuration()) : speechTracker()?.currentMessageId ? '--:--' : '0:00' }}</span></div>
+        @if (speechTracker()?.currentMessageId && !timelineDuration()) {
+          <p class="buffering-note" role="status">Buffering · {{ formatTime(speechTracker()?.bufferedSeconds) }} ready. Full timeline available when buffering finishes.</p>
         }
+
+
+        @if (pendingSpeech().length) {
+        <section class="up-next" aria-label="Playback queue">
+          <div class="section-heading"><h3>Up next · {{ pendingSpeech().length }}</h3>@if (pendingSpeech().length) { <button type="button" class="text-button" (click)="clearQueued()">Clear</button> }</div>
+          @if (pendingSpeech().length) { <p class="hint">Play now switches to the selected text and clears the waiting queue. Your reading progress is saved.</p> }
+          <ol class="queue-list">@for (item of pendingSpeech(); track item.id) { <li><p>{{ item.text.slice(0, 100) }}{{ item.text.length > 100 ? '…' : '' }}</p><div><span class="buffer-state" [class.ready]="item.status === 'ready'">{{ item.status === 'ready' ? '✓ Audio ready' : item.status === 'buffering' ? 'Buffering ' + item.bufferedParts + '/' + item.totalParts : item.status === 'failed' ? 'Buffering error' : 'Waiting' }}</span><button type="button" class="text-button" (click)="playCapturedMessage(+item.messageId)" [disabled]="!connected() || playbackBusy()" [attr.aria-label]="'Play queued message ' + item.messageId">Play now</button><button type="button" class="text-button" (click)="removeQueued(item.id)" [attr.aria-label]="'Remove queued message ' + item.messageId">Remove</button></div></li> }</ol>
+          @if (pendingSpeech().length) { <button type="button" class="secondary" (click)="skip()">Next recording →</button> }
+        </section>
+        }
+        @if (speechDiagnostics()?.latestEvent?.status === 'failed') { <details class="error-note"><summary>Playback failed. Show details</summary><p>{{ speechDiagnostics()?.latestEvent?.error }}</p><button type="button" class="text-button" (click)="clearLatestError()">Dismiss</button></details> }
+      </section>
+      }
 
         <section class="library" aria-labelledby="history-title">
           <div class="section-heading"><div><p class="eyebrow">PICK UP WHERE YOU LEFT OFF</p><h2 id="history-title">{{ activeTab() === 'manual' ? 'Your listening history' : 'Captured messages' }}</h2></div><button class="text-button" type="button" (click)="refreshAll()" [disabled]="busy()">↻ Refresh</button></div>
@@ -65,8 +110,8 @@
                       <button type="button" class="secondary" (click)="stop()" [attr.aria-label]="'Stop message ' + item.id"><svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg> Stop</button>
                     } @else {
                       @if ((item.playbackPositionSeconds ?? 0) > 0 && !item.playbackCompleted) { <button type="button" class="text-button" (click)="playCapturedMessage(item.id, true)">Start over</button> }
-                      <button type="button" class="secondary" (click)="enqueueMessage(item.id)" [disabled]="!connected() || queueBusy()" [attr.aria-label]="'Queue message ' + item.id">＋ Queue</button>
-                      <button type="button" class="row-play" (click)="playCapturedMessage(item.id)" [disabled]="!connected() || playbackBusy()" [attr.aria-label]="'Play message ' + item.id"><svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>{{ (item.playbackPositionSeconds ?? 0) > 0 && !item.playbackCompleted ? 'Continue' : 'Play' }}</button>
+                      <button type="button" class="secondary" (click)="enqueueMessage(item.id)" [disabled]="!connected() || queueBusy()" [attr.aria-label]="'Queue message ' + item.id">Add to queue</button>
+                      <button type="button" class="row-play" (click)="playCapturedMessage(item.id)" [disabled]="!connected() || playbackBusy()" [attr.aria-label]="'Play message ' + item.id"><svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>{{ (item.playbackPositionSeconds ?? 0) > 0 && !item.playbackCompleted ? 'Resume' : item.playbackCompleted ? 'Replay' : 'Play now' }}</button>
                     }
                     <button type="button" class="delete-icon" title="Delete text" (click)="pendingDeleteId.set(item.id)" [disabled]="deletingId() !== null" [attr.aria-label]="'Delete message ' + item.id"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7"/></svg></button>
                   </div></div>
@@ -76,7 +121,6 @@
                       <div class="row-actions"><button type="button" class="secondary" (click)="pendingDeleteId.set(null)" [disabled]="deletingId() !== null">Cancel</button><button type="button" class="danger-button" (click)="deleteText(item.id)" [disabled]="deletingId() !== null">{{ deletingId() === item.id ? 'Deleting...' : 'Delete text' }}</button></div>
                     </div>
                   }
-                  <progress [value]="recordPercent(item)" max="100" [attr.aria-label]="recordStatus(item)"></progress>
                 </li>
               }
             </ul>
@@ -84,30 +128,28 @@
         </section>
       </div>
 
-      <aside class="player card" aria-labelledby="player-title">
-        <div class="section-heading"><p class="eyebrow" id="player-title">NOW LISTENING</p><span class="player-dot" [class.active]="speechTracker()?.isSpeaking"></span></div>
-        <div class="sound-art" [class.playing]="speechTracker()?.isSpeaking && !speechTracker()?.isPaused" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-        <h2 aria-live="polite">{{ playbackLabel() }}</h2><p class="muted player-subtitle">{{ speechTracker()?.isPreparingAudio ? 'Generating a short part. Playback starts when it is ready.' : speechTracker()?.currentText ? 'Use the controls to pause or stop reading.' : 'Choose a text and press Play.' }}</p>
-        <div class="player-controls"><button type="button" class="player-main" [disabled]="!connected() || !speechTracker()?.currentMessageId" (click)="speechTracker()?.isPaused ? resume() : pause()" [attr.aria-label]="speechTracker()?.isPaused ? 'Resume reading' : 'Pause reading'" [title]="speechTracker()?.isPaused ? 'Resume reading' : 'Pause reading'">@if (speechTracker()?.isPaused) { <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg> } @else { <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg> }<span>{{ speechTracker()?.isPaused ? 'Play' : 'Pause' }}</span></button><button type="button" class="player-stop" aria-label="Stop reading" title="Stop reading" (click)="stop()" [disabled]="!speechTracker()?.currentMessageId && !(speechTracker()?.queuedItems ?? 0)"><svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg><span>Stop</span></button></div>
-        <div class="seek-controls"><button class="secondary" type="button" (click)="seekAudio(-15, true)" [disabled]="!timelineDuration()">−15 sec</button><button class="secondary" type="button" (click)="seekAudio(15, true)" [disabled]="!timelineDuration()">+15 sec</button></div>
-        <label class="sr-only" for="audio-position">Audio position</label>
-        <input id="audio-position" class="audio-seek" type="range" min="0" [max]="timelineDuration() || 1" step="0.1" [value]="timelineDuration() ? (seekDraft() ?? speechTracker()?.positionSeconds ?? 0) : 0" (input)="previewSeek($any($event.target).value)" (change)="commitSeek($any($event.target).value)" (pointercancel)="seekDraft.set(null)" [disabled]="!timelineDuration()" />
-        <div class="time-caption"><span>{{ formatTime(seekDraft() ?? speechTracker()?.positionSeconds) }}</span><span>{{ timelineDuration() ? formatTime(timelineDuration()) : speechTracker()?.currentMessageId ? '--:--' : '0:00' }}</span></div>
-        @if (speechTracker()?.currentMessageId && !timelineDuration()) {
-          <p class="buffering-note" role="status">Buffering · {{ formatTime(speechTracker()?.bufferedSeconds) }} ready. Full timeline available when buffering finishes.</p>
-        }
 
-        <div class="voice-summary"><span>Voice: {{ speechMode() === 'kokoro' ? (kokoroVoice() === 'af_bella' ? 'Bella' : 'Heart') : speechMode() === 'cloud' ? 'OpenAI · Online' : 'Windows · Local' }}</span><button type="button" class="text-button" (click)="settingsDialog.showModal()">Change voice ↗</button></div>
-        <section class="up-next" aria-label="Playback queue">
-          <div class="section-heading"><h3>Up next · {{ pendingSpeech().length }}</h3>@if (pendingSpeech().length) { <button type="button" class="text-button" (click)="clearQueued()">Clear</button> }</div>
-          @if (!pendingSpeech().length) { <p class="queue-empty">Queue up the next text while listening.</p> }
-          <ol class="queue-list">@for (item of pendingSpeech(); track item.id) { <li><p>{{ item.text.slice(0, 100) }}{{ item.text.length > 100 ? '…' : '' }}</p><div><span class="buffer-state" [class.ready]="item.status === 'ready'">{{ item.status === 'ready' ? '✓ Audio ready' : item.status === 'buffering' ? 'Buffering ' + item.bufferedParts + '/' + item.totalParts : item.status === 'failed' ? 'Buffering error' : 'Waiting' }}</span><button type="button" class="text-button" (click)="removeQueued(item.id)" [attr.aria-label]="'Remove queued message ' + item.messageId">Remove</button></div></li> }</ol>
-          @if (pendingSpeech().length) { <button type="button" class="secondary" (click)="skip()">Next recording →</button> }
-        </section>
-        @if (speechDiagnostics()?.latestEvent?.status === 'failed') { <details class="error-note"><summary>Playback failed. Show details</summary><p>{{ speechDiagnostics()?.latestEvent?.error }}</p><button type="button" class="text-button" (click)="clearLatestError()">Dismiss</button></details> }
-      </aside>
     </div>
     @if (message()) { <p class="global-status" role="status">{{ message() }}</p> }
+  </div>
+
+  <button type="button" class="voice-bubble" popovertarget="quick-voice" aria-label="Open voice and language settings"><span>Voice &amp; language</span><small>{{ voiceLabel() }} / {{ voiceLanguage() }}</small></button>
+  <div id="quick-voice" #quickVoice popover="auto" class="voice-popover" aria-labelledby="quick-voice-title">
+    <div class="section-heading"><h2 id="quick-voice-title">Voice &amp; language</h2><button type="button" class="text-button" popovertarget="quick-voice" popovertargetaction="hide" aria-label="Close quick voice settings">Close</button></div>
+    <label class="input-row"><span>Mode</span><select [value]="speechMode()" (change)="setSpeechMode($any($event.target).value)"><option value="kokoro">Kokoro</option><option value="local">Windows voices</option><option value="cloud">OpenAI</option></select></label>
+    @if (speechMode() === 'kokoro') {
+      <label class="input-row"><span>Voice</span><select [value]="kokoroVoice()" (change)="setKokoroVoice($any($event.target).value)"><option value="af_heart">Heart</option><option value="af_bella">Bella</option></select></label>
+      <label class="input-row"><span>Speed</span><input type="range" min="0.5" max="2" step="0.05" [value]="kokoroSpeed()" (change)="setKokoroSpeed($any($event.target).value)" /><strong>{{ kokoroSpeed() }}</strong></label>
+    } @else if (speechMode() === 'local') {
+      <label class="input-row"><span>Voice / language</span><select [value]="selectedVoice()" (change)="setVoice($any($event.target).value)"><option value="">System default</option>@for (voice of voices(); track voice.name) { <option [value]="voice.name">{{ voice.name }} ({{ voice.culture }})</option> }</select></label>
+      <label class="input-row"><span>Speed</span><input type="range" min="-10" max="10" step="1" [value]="speechRate()" (change)="setSpeechRate($any($event.target).value)" /><strong>{{ speechRate() }}</strong></label>
+    } @else {
+      <label class="input-row"><span>Voice</span><input type="text" [value]="cloudVoice()" (change)="setCloudVoice($any($event.target).value)" /></label>
+      <label class="input-row"><span>Speed</span><input type="range" min="0.25" max="4" step="0.05" [value]="cloudSpeed()" (change)="setCloudSpeed($any($event.target).value)" /><strong>{{ cloudSpeed() }}</strong></label>
+    }
+    <p class="hint">Language: {{ voiceLanguage() }}.@if (speechMode() === 'kokoro') { Choose Windows voices for other installed languages. }</p>
+    <p class="hint">Changes apply to the next reading.</p>
+    <button type="button" class="text-button" (click)="quickVoice.hidePopover(); settingsDialog.showModal()">More voice settings</button>
   </div>
 
   <dialog #settingsDialog class="settings-dialog" aria-labelledby="settings-title">

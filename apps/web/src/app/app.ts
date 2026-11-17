@@ -100,11 +100,22 @@ export class App implements OnInit, OnDestroy {
   protected readonly busy = signal(false);
   protected readonly message = signal('');
   protected readonly manualText = signal('');
+  protected readonly composerOpen = signal(true);
+  @ViewChild('manualInput') private manualInput?: ElementRef<HTMLTextAreaElement>;
+  @ViewChild('newTextButton') private newTextButton?: ElementRef<HTMLButtonElement>;
   protected readonly manualBusy = signal(false);
   protected readonly manualStatus = signal('');
   protected readonly manualTextLimit = 50000;
   protected readonly pendingSpeech = signal<QueuedSpeech[]>([]);
   protected readonly autoScroll = signal(true);
+  protected readonly hasActivePlayback = computed(() => !!(this.speechTracker()?.currentMessageId ||
+    this.speechTracker()?.isSpeaking || this.speechTracker()?.isPaused || this.pendingSpeech().length));
+  protected readonly voiceLanguage = computed(() => this.speechMode() === 'kokoro' ? 'English (US)'
+    : this.speechMode() === 'cloud' ? 'Automatic from text'
+    : this.voices().find(voice => voice.name === this.selectedVoice())?.culture ?? 'System default');
+  protected readonly voiceLabel = computed(() => this.speechMode() === 'kokoro'
+    ? this.kokoroVoice() === 'af_bella' ? 'Bella' : 'Heart'
+    : this.speechMode() === 'cloud' ? this.cloudVoice() : this.selectedVoice() || 'System voice');
   protected readonly queueBusy = signal(false);
   protected readonly seekDraft = signal<number | null>(null);
   protected readonly timelineDuration = computed(() => {
@@ -134,7 +145,7 @@ export class App implements OnInit, OnDestroy {
     return 'Ready to listen';
   });
 
-  protected async readManualText(): Promise<void> {
+  protected async readManualText(action: 'now' | 'queue' = 'queue'): Promise<void> {
     const text = this.manualText().trim();
     if (this.manualBusy() || this.manualTextActive() || !text || this.manualText().length > this.manualTextLimit) {
       return;
@@ -143,18 +154,31 @@ export class App implements OnInit, OnDestroy {
     this.manualBusy.set(true);
     this.manualStatus.set('');
     try {
+      if (action === 'now' && this.hasActivePlayback()) await this.stopForReplacement();
       const queued = await firstValueFrom(this.http.post<{ messageId: number }>(`${this.apiBase}/api/speech/text`, { text }));
       const now = new Date().toISOString();
       this.history.update(items => [{ id: queued.messageId, role: 'manual', text,
         sourceMessageId: null, createdAt: now, updatedAt: now, spokeAt: null,
         playbackPositionSeconds: 0, playbackDurationSeconds: 0, playbackProgressPercent: 0,
         playbackCompleted: false } as HistoryItem, ...items.filter(item => item.id !== queued.messageId)]);
-      this.manualStatus.set('Text added to the speech queue. Use Resume if playback is paused.');
+      this.manualText.set('');
+      this.composerOpen.set(false);
+      if (action === 'now' || !this.hasActivePlayback()) {
+        this.lastReading.set(this.history().find(item => item.id === queued.messageId)!);
+        this.startingMessageId.set(queued.messageId);
+      }
+      window.requestAnimationFrame(() => this.newTextButton?.nativeElement.focus());
+      this.manualStatus.set(action === 'now' ? 'Starting your new text.' : 'Text added to the speech queue.');
     } catch {
       this.manualStatus.set('Could not queue text. Check the API connection and try again.');
     } finally {
       this.manualBusy.set(false);
     }
+  }
+
+  protected showComposer(): void {
+    this.composerOpen.set(true);
+    window.requestAnimationFrame(() => this.manualInput?.nativeElement.focus());
   }
 
   protected clearManualText(): void {
@@ -182,10 +206,56 @@ export class App implements OnInit, OnDestroy {
   protected readonly historyLimit = signal(50);
   protected readonly trackerHighlight = computed<TrackerHighlight>(() => this.calculateTrackerHighlight());
 
+  private readonly lastReading = signal<HistoryItem | null>(null);
+  private readonly startingMessageId = signal<number | null>(null);
+  protected readonly readerItem = computed(() => {
+    const id = this.speechTracker()?.currentMessageId ?? this.lastReading()?.id;
+    return this.history().find(item => String(item.id) === String(id)) ?? this.lastReading();
+  });
+  protected readonly readerText = computed(() => this.speechTracker()?.currentText ?? this.readerItem()?.text ?? '');
+  protected readonly readerProgress = computed(() => this.speechTracker()?.currentMessageId
+    ? this.playbackProgress() : this.readerItem() ? this.recordPercent(this.readerItem()!) : 0);
+  protected readonly readerStatus = computed(() => {
+    const tracker = this.speechTracker();
+    if (tracker?.currentMessageId) return tracker.isPaused
+      ? `Paused \u00b7 ${this.readerProgress()}% read` : this.playbackLabel();
+    if (this.startingMessageId() === this.readerItem()?.id) return 'Preparing audio';
+    return this.readerItem()?.playbackCompleted ? 'Finished' : this.readerText()
+      ? `Stopped \u00b7 ${this.readerProgress()}% read` : 'Ready to listen';
+  });
+  protected readonly readerHighlight = computed<TrackerHighlight>(() => {
+    const text = this.readerText();
+    const word = this.trackerHighlight();
+    if (!this.autoScroll() || !this.speechTracker()?.currentMessageId || !word.current)
+      return { before: text, current: '', after: '' };
+    return word;
+  });
+
+  private rememberReading(): void {
+    const tracker = this.speechTracker();
+    if (!tracker?.currentMessageId || !tracker.currentText) return;
+    const item = this.history().find(entry => String(entry.id) === tracker.currentMessageId);
+    const snapshot = { ...item, id: Number(tracker.currentMessageId), text: tracker.currentText,
+      playbackPositionSeconds: tracker.positionSeconds ?? 0,
+      playbackProgressPercent: this.playbackProgress(), playbackCompleted: false } as HistoryItem;
+    this.lastReading.set(snapshot);
+    this.history.update(items => items.map(entry => entry.id === snapshot.id ? { ...entry, ...snapshot } : entry));
+  }
+
+  protected async toggleReaderPlayback(): Promise<void> {
+    if (this.speechTracker()?.currentMessageId) {
+      if (this.speechTracker()?.isPaused) await this.resume();
+      else await this.pause();
+    } else if (this.readerItem()) {
+      await this.playCapturedMessage(this.readerItem()!.id, !!this.readerItem()!.playbackCompleted);
+    }
+  }
+
   constructor(private readonly http: HttpClient) {}
 
   async ngOnInit(): Promise<void> {
     await this.refreshAll();
+    if (this.speechTracker()?.currentText && !this.manualText().trim()) this.composerOpen.set(false);
     this.pollTimer = window.setInterval(() => {
       void this.refreshLiveData();
     }, 2000);
@@ -332,6 +402,15 @@ export class App implements OnInit, OnDestroy {
     await this.invokeSpeech('repeat');
   }
 
+  private async stopForReplacement(): Promise<void> {
+    await firstValueFrom(this.http.post(`${this.apiBase}/api/speech/stop`, {}));
+    this.rememberReading();
+    this.speechTracker.set(null);
+    this.pendingSpeech.set([]);
+    this.seekDraft.set(null);
+    this.startingMessageId.set(null);
+  }
+
   protected async playCapturedMessage(messageId: number, restart = false): Promise<void> {
     if (this.playbackBusy()) return;
     if (!restart && this.speechTracker()?.currentMessageId === String(messageId)) {
@@ -341,11 +420,11 @@ export class App implements OnInit, OnDestroy {
     this.playbackBusy.set(true);
     try {
       // Selecting a history row starts that recording, rather than appending repeats.
-      await firstValueFrom(this.http.post(`${this.apiBase}/api/speech/stop`, {}));
+      await this.stopForReplacement();
       await firstValueFrom(this.http.post(`${this.apiBase}/api/speech/play/${messageId}${restart ? '?restart=true' : ''}`, {}));
-      this.message.set(`Queued message #${messageId} for playback.`);
+      this.message.set(`Starting message #${messageId}.`);
     } catch {
-      this.message.set(`Failed to queue message #${messageId}.`);
+      this.message.set(`Could not start message #${messageId}.`);
     } finally {
       this.playbackBusy.set(false);
     }
@@ -450,14 +529,17 @@ export class App implements OnInit, OnDestroy {
     this.trackerInFlight = true;
     try {
       const data = await firstValueFrom(this.http.get<SpeechTracker>(`${this.apiBase}/api/speech/tracker`));
+      this.rememberReading();
       const previous = this.speechTracker()?.currentMessageId;
       this.speechTracker.set(data.currentMessageId && this.deletedHistoryIds.has(Number(data.currentMessageId)) ? null : data);
+      this.rememberReading();
+      if (data.currentMessageId === String(this.startingMessageId())) this.startingMessageId.set(null);
       if (data.currentMessageId) this.history.update(items => items.map(item => String(item.id) === data.currentMessageId
         ? { ...item, playbackPositionSeconds: data.positionSeconds ?? 0,
             playbackDurationSeconds: data.isFullyBuffered ? data.bufferedSeconds : item.playbackDurationSeconds,
             playbackProgressPercent: this.playbackProgress(), playbackCompleted: false } : item));
       if (previous && previous !== data.currentMessageId) void this.loadHistory(this.historyLimit()).catch(() => {});
-      const wordKey = `${data.currentMessageId}:${data.currentWord?.start}`;
+      const wordKey = `${data.currentMessageId}:${data.currentWord?.start ?? data.currentCharIndex}`;
       if (wordKey !== this.lastWordKey && this.autoScroll()) {
         this.lastWordKey = wordKey;
         window.requestAnimationFrame(() => {
@@ -491,6 +573,8 @@ export class App implements OnInit, OnDestroy {
     try {
       await firstValueFrom(this.http.delete(`${this.apiBase}/api/history/${id}`));
       this.deletedHistoryIds.add(id);
+      if (this.lastReading()?.id === id) this.lastReading.set(null);
+      if (this.startingMessageId() === id) this.startingMessageId.set(null);
       this.history.update(items => items.filter(item => item.id !== id));
       this.pendingSpeech.update(items => items.filter(item => item.messageId !== String(id)));
       if (this.speechTracker()?.currentMessageId === String(id)) this.speechTracker.set(null);
@@ -543,9 +627,10 @@ export class App implements OnInit, OnDestroy {
   protected recordStatus(item: HistoryItem): string {
     const percent = this.recordPercent(item);
     const status = this.isCurrentMessage(item) ? this.speechTracker()?.isPaused ? 'Paused' : 'Reading'
-      : item.playbackCompleted ? 'Completed' : this.pendingSpeech().some(entry => entry.messageId === String(item.id)) ? 'Queued'
+      : item.playbackCompleted ? 'Finished' : this.pendingSpeech().some(entry => entry.messageId === String(item.id)) ? 'Queued'
       : (item.playbackPositionSeconds ?? 0) > 0 ? 'In progress' : 'Not started';
-    return `${status} · ${percent}%`;
+    return (this.isCurrentMessage(item) && !this.speechTracker()?.isPaused) || item.playbackCompleted
+      ? status : `${status} \u00b7 ${percent}% read`;
   }
 
   private parseBool(raw: string | undefined, fallback: boolean): boolean {
@@ -614,7 +699,7 @@ export class App implements OnInit, OnDestroy {
 
     let start = index;
     let end = index;
-    const isWordChar = (ch: string): boolean => /[A-Za-z0-9']/u.test(ch);
+    const isWordChar = (ch: string): boolean => /[\p{L}\p{N}\p{M}'\u2019]/u.test(ch);
 
     while (start > 0 && isWordChar(text[start - 1])) {
       start -= 1;
@@ -675,10 +760,11 @@ export class App implements OnInit, OnDestroy {
       const tracker = this.speechTracker();
       if (tracker && action === 'pause') this.speechTracker.set({ ...tracker, isPaused: true });
       if (tracker && action === 'resume') this.speechTracker.set({ ...tracker, isPaused: false });
+      if (action === 'stop') this.rememberReading();
       if (tracker && action === 'stop') this.speechTracker.set({ ...tracker,
         isSpeaking: false, isPaused: false, currentMessageId: null, currentText: null,
         queuedItems: 0, currentCharIndex: 0, currentTextLength: 0 });
-      if (action === 'stop') this.pendingSpeech.set([]);
+      if (action === 'stop') { this.pendingSpeech.set([]); this.startingMessageId.set(null); }
       this.message.set(`Speech ${action} requested.`);
     } catch {
       this.message.set(`Failed to call /api/speech/${action}.`);

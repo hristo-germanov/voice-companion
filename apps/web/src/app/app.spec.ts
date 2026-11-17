@@ -21,7 +21,7 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Turn words into listening.');
+    expect(compiled.querySelector('h1')?.textContent).toContain('Listen to your text.');
   });
 });
 
@@ -43,7 +43,7 @@ describe('Manual text playback', () => {
     return fixture;
   }
 
-  it('queues trimmed text once, retains the draft, and reports success', async () => {
+  it('queues trimmed text once, clears and collapses the draft, and reports success', async () => {
     const fixture = setup('  Hello\nworld  ');
     const http = TestBed.inject(HttpTestingController);
     const pending = fixture.componentInstance['readManualText']();
@@ -54,12 +54,100 @@ describe('Manual text playback', () => {
     expect(fixture.componentInstance['manualBusy']()).toBe(true);
     request.flush({ queued: true, messageId: 1 });
     await pending;
-    expect(fixture.componentInstance['manualText']()).toBe('  Hello\nworld  ');
+    expect(fixture.componentInstance['manualText']()).toBe('');
+    expect(fixture.componentInstance['composerOpen']()).toBe(false);
     expect(fixture.componentInstance['manualStatus']()).toContain('added to the speech queue');
     expect(fixture.componentInstance['manualBusy']()).toBe(false);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.history .source-label').textContent).toContain('0%');
+    expect(fixture.nativeElement.querySelector('textarea')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.new-text-bar button').textContent).toContain('New text');
+    expect(fixture.nativeElement.querySelector('.word-reader').textContent).toBe('Hello\nworld');
+    fixture.componentInstance['showComposer']();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('textarea').value).toBe('');
     expect(fixture.nativeElement.querySelector('.history .source-label').textContent).not.toContain('PASTED TEXT');
+    http.verify();
+  });
+
+  it('offers Play now and Add to queue while paused, and switches before submitting new text', async () => {
+    const fixture = setup('New text');
+    const app = fixture.componentInstance;
+    app['connected'].set(true);
+    app['speechTracker'].set({ currentMessageId: '5', currentText: 'Old text', isPaused: true,
+      positionSeconds: 20, bufferedSeconds: 100, isFullyBuffered: true } as never);
+    fixture.detectChanges();
+    const actions = fixture.nativeElement.querySelector('.composer-actions');
+    expect(actions.textContent).toContain('Play now');
+    expect(actions.textContent).toContain('Add to queue');
+    actions.querySelector('.primary').click();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectNone('http://127.0.0.1:17832/api/speech/text');
+    http.expectOne('http://127.0.0.1:17832/api/speech/stop').flush(null);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    http.expectOne('http://127.0.0.1:17832/api/speech/text').flush({ messageId: 6 });
+    await fixture.whenStable();
+    expect(app['readerText']()).toBe('New text');
+    expect(app['readerStatus']()).toBe('Preparing audio');
+    expect(app['manualText']()).toBe('');
+    expect(app['composerOpen']()).toBe(false);
+    http.expectNone('http://127.0.0.1:17832/api/speech/resume');
+    http.verify();
+  });
+
+  it('adds new text to the queue without stopping or resuming paused playback', async () => {
+    const fixture = setup('Queue this');
+    const app = fixture.componentInstance;
+    app['speechTracker'].set({ currentMessageId: '5', currentText: 'Old text', isPaused: true } as never);
+    const pending = app['readManualText']('queue');
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('http://127.0.0.1:17832/api/speech/text').flush({ messageId: 6 });
+    await pending;
+    expect(app['speechTracker']()?.currentMessageId).toBe('5');
+    expect(app['speechTracker']()?.isPaused).toBe(true);
+    expect(app['manualText']()).toBe('');
+    expect(app['composerOpen']()).toBe(false);
+    http.expectNone('http://127.0.0.1:17832/api/speech/stop');
+    http.expectNone('http://127.0.0.1:17832/api/speech/resume');
+    http.verify();
+  });
+
+  it('retains the draft if switching playback fails', async () => {
+    const fixture = setup('Keep my draft');
+    const app = fixture.componentInstance;
+    app['speechTracker'].set({ currentMessageId: '5', currentText: 'Old text', isPaused: true } as never);
+    const pending = app['readManualText']('now');
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('http://127.0.0.1:17832/api/speech/stop').flush({}, { status: 500, statusText: 'Failed' });
+    await pending;
+    http.expectNone('http://127.0.0.1:17832/api/speech/text');
+    expect(app['manualText']()).toBe('Keep my draft');
+    expect(app['composerOpen']()).toBe(true);
+    expect(app['manualBusy']()).toBe(false);
+    http.verify();
+  });
+
+  it('keeps an empty reader hidden and provides floating voice and language controls', async () => {
+    const fixture = setup('');
+    expect(fixture.nativeElement.querySelector('.reader-panel')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.topbar button')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.voice-bubble').getAttribute('popovertarget')).toBe('quick-voice');
+    const panel = fixture.nativeElement.querySelector('#quick-voice');
+    expect(panel.getAttribute('popover')).toBe('auto');
+    const selects = panel.querySelectorAll('select');
+    selects[1].value = 'af_bella';
+    selects[1].dispatchEvent(new Event('change'));
+    const http = TestBed.inject(HttpTestingController);
+    const save = http.expectOne('http://127.0.0.1:17832/api/settings');
+    expect(save.request.body).toEqual({ key: 'speech.kokoro.voice', value: 'af_bella' });
+    save.flush({});
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.voice-bubble').textContent).toContain('Bella');
+    expect(panel.textContent).toContain('English (US)');
+    fixture.componentInstance['speechMode'].set('local');
+    fixture.componentInstance['voices'].set([{ name: 'Local voice', culture: 'bg-BG' }] as never);
+    fixture.componentInstance['selectedVoice'].set('Local voice');
+    fixture.detectChanges();
+    expect(panel.textContent).toContain('bg-BG');
     http.verify();
   });
 
@@ -184,13 +272,36 @@ describe('Manual text playback', () => {
     expect(fixture.componentInstance['manualText']()).toBe('Draft remains when switching tabs');
   });
 
+  it('tailors the heading to each tab and keeps ChatGPT setup help collapsed', () => {
+    const fixture = setup('');
+    const heading = () => fixture.nativeElement.querySelector('.page-heading').textContent;
+    expect(heading()).toContain('Listen to your text.');
+    expect(heading()).toContain('press Play now');
+    expect(fixture.nativeElement.querySelector('.chatgpt-help')).toBeNull();
+    fixture.nativeElement.querySelectorAll('.tabs button')[1].click();
+    fixture.detectChanges();
+    expect(heading()).toContain('Listen to your ChatGPT conversations.');
+    expect(heading()).toContain('browser extension');
+    expect(heading()).not.toContain('Paste a text');
+    const help = fixture.nativeElement.querySelector('.chatgpt-help') as HTMLDetailsElement;
+    expect(help.open).toBe(false);
+    expect(help.querySelector('summary')?.textContent).toContain('How does ChatGPT listening work?');
+    expect(help.textContent).toContain('17832');
+    expect(help.textContent).toContain('Api:ApiKey');
+    expect(help.textContent).toContain('refresh your ChatGPT tab');
+    fixture.nativeElement.querySelectorAll('.tabs button')[0].click();
+    fixture.detectChanges();
+    expect(heading()).toContain('Listen to your text.');
+    expect(fixture.nativeElement.querySelector('.chatgpt-help')).toBeNull();
+  });
+
   it('switches playback to a selected row and suppresses duplicate clicks', async () => {
     const fixture = setup('');
     const http = TestBed.inject(HttpTestingController);
     const pending = fixture.componentInstance['playCapturedMessage'](12);
     await fixture.componentInstance['playCapturedMessage'](12);
     http.expectOne('http://127.0.0.1:17832/api/speech/stop').flush(null);
-    await Promise.resolve();
+    await new Promise(resolve => setTimeout(resolve, 0));
     http.expectOne('http://127.0.0.1:17832/api/speech/play/12').flush({ queued: true });
     await pending;
     expect(fixture.componentInstance['playbackBusy']()).toBe(false);
@@ -266,10 +377,10 @@ describe('Manual text playback', () => {
     fixture.detectChanges();
     const slider = fixture.nativeElement.querySelector('#audio-position') as HTMLInputElement;
     expect(slider.disabled).toBe(true);
-    expect(slider.max).toBe('1');
+    expect(slider.max).toBe('100');
     fixture.componentInstance['speechTracker'].set({ ...state, positionSeconds: 6, bufferedSeconds: 40 } as never);
     fixture.detectChanges();
-    expect(slider.max).toBe('1');
+    expect(slider.max).toBe('100');
     expect(slider.value).toBe('0');
     expect(fixture.nativeElement.querySelector('.buffering-note').textContent).toContain('0:40 ready');
     expect(fixture.nativeElement.querySelector('.time-caption').textContent).toContain('--:--');
@@ -281,20 +392,87 @@ describe('Manual text playback', () => {
     expect(fixture.nativeElement.querySelector('.time-caption').textContent).toContain('2:00');
   });
 
-  it('keeps percentages beside the full text and out of the small player', () => {
+  it('combines text and controls, hiding percentages until paused', () => {
     const fixture = setup('');
-    const text = 'The complete text remains in the reader. Nothing is cut from it.';
-    fixture.componentInstance['speechTracker'].set({ currentMessageId: '1', currentText: text,
-      isSpeaking: true, isPaused: true, positionSeconds: 31, bufferedSeconds: 100, isFullyBuffered: true } as never);
+    const app = fixture.componentInstance;
+    const text = 'First sentence. The current sentence is here. Last sentence.';
+    app['history'].set([{ id: 1, role: 'manual', text }] as never);
+    app['speechTracker'].set({ currentMessageId: '1', currentText: text,
+      currentWord: { start: text.indexOf('current'), length: 7 },
+      isSpeaking: true, isPaused: false, positionSeconds: 31, bufferedSeconds: 100, isFullyBuffered: true } as never);
     fixture.detectChanges();
-    const player = fixture.nativeElement.querySelector('aside.player') as HTMLElement;
-    expect(player.querySelector('progress')).toBeNull();
-    expect(player.textContent).not.toContain('%');
-    expect(fixture.nativeElement.querySelector('.reader-panel').textContent).toContain('31%');
-    expect(fixture.nativeElement.querySelector('.word-reader').textContent).toBe(text);
+    const card = fixture.nativeElement.querySelector('.reader-panel') as HTMLElement;
+    expect(card.querySelector('.player-controls')).toBeTruthy();
+    expect(card.querySelector('.word-reader')?.textContent).toBe(text);
+    expect(card.querySelector('mark')?.textContent).toBe('current');
+    app['speechTracker'].update(value => ({ ...value!, currentWord: { start: text.indexOf('sentence is'), length: 8 } }));
+    fixture.detectChanges();
+    expect(card.querySelector('mark')?.textContent).toBe('sentence');
+    expect(card.querySelector('progress')).toBeNull();
+    expect(card.querySelectorAll('input[type=range]')).toHaveLength(1);
+    expect((card.querySelector('.audio-seek') as HTMLInputElement).value).toBe('31');
+    expect(fixture.nativeElement.querySelector('.history progress')).toBeNull();
+    expect(card.textContent).not.toContain('%');
+    expect(fixture.nativeElement.querySelector('.history .source-label').textContent).not.toContain('%');
+    expect(fixture.nativeElement.querySelector('aside.player')).toBeNull();
+    app['speechTracker'].update(value => ({ ...value!, isPaused: true }));
+    fixture.detectChanges();
+    expect(card.querySelector('.reader-status')?.textContent).toContain('31% read');
+    expect(card.querySelector('.player-main')?.textContent).toContain('Resume');
+    app['autoScroll'].set(false);
+    fixture.detectChanges();
+    expect(card.querySelector('mark')?.textContent).toBe('');
+    expect(card.querySelector('.word-reader')?.textContent).toBe(text);
   });
 
-  it('shows saved partial progress, completed progress, and Continue', () => {
+  it('keeps stopped text and saved progress with a working Resume action', async () => {
+    const fixture = setup('');
+    const app = fixture.componentInstance;
+    app['speechTracker'].set({ currentMessageId: '1', currentText: 'Keep reading this.',
+      isSpeaking: true, positionSeconds: 42, bufferedSeconds: 100, isFullyBuffered: true } as never);
+    const stopped = app['stop']();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('http://127.0.0.1:17832/api/speech/stop').flush(null);
+    await stopped;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.word-reader').textContent).toBe('Keep reading this.');
+    expect(fixture.nativeElement.querySelector('.reader-status').textContent).toContain('42% read');
+    expect(fixture.nativeElement.querySelector('.player-main').textContent).toContain('Resume');
+    const resumed = app['toggleReaderPlayback']();
+    http.expectOne('http://127.0.0.1:17832/api/speech/stop').flush(null);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    http.expectOne('http://127.0.0.1:17832/api/speech/play/1').flush({ queued: true });
+    await resumed;
+    http.verify();
+  });
+
+  it('keeps the finished text and replays it from the beginning', async () => {
+    const fixture = setup('');
+    const app = fixture.componentInstance;
+    app['speechTracker'].set({ currentMessageId: '1', currentText: 'Finished text.',
+      isSpeaking: true, positionSeconds: 99, bufferedSeconds: 100, isFullyBuffered: true } as never);
+    const http = TestBed.inject(HttpTestingController);
+    const refresh = app['loadTracker']();
+    http.expectOne('http://127.0.0.1:17832/api/speech/tracker').flush({ currentMessageId: null, currentText: null });
+    await refresh;
+    http.expectOne('http://127.0.0.1:17832/api/history?limit=50').flush([
+      { id: 1, role: 'manual', text: 'Finished text.', playbackCompleted: true, playbackProgressPercent: 100 }
+    ]);
+    await Promise.resolve();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.word-reader').textContent).toBe('Finished text.');
+    expect(fixture.nativeElement.querySelector('.reader-status').textContent).toBe('Finished');
+    expect(fixture.nativeElement.querySelector('.player-main').textContent).toBe('Replay');
+    expect(fixture.nativeElement.querySelector('.reader-panel').textContent).not.toContain('%');
+    const replay = app['toggleReaderPlayback']();
+    http.expectOne('http://127.0.0.1:17832/api/speech/stop').flush(null);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    http.expectOne('http://127.0.0.1:17832/api/speech/play/1?restart=true').flush({ queued: true });
+    await replay;
+    http.verify();
+  });
+
+  it('shows saved partial progress, Finished, Resume and Replay', () => {
     const fixture = setup('');
     const base = { role: 'manual' as const, text: 'Saved sample', sourceMessageId: null,
       createdAt: '2026-11-11T10:00:00Z', updatedAt: '2026-11-11T10:00:00Z', spokeAt: null };
@@ -305,8 +483,10 @@ describe('Manual text playback', () => {
     fixture.detectChanges();
     const labels = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.source-label')).map(node => node.textContent);
     expect(labels[0]).toContain('37%');
-    expect(labels[1]).toContain('100%');
-    expect(fixture.nativeElement.querySelector('[aria-label="Play message 41"]').textContent).toContain('Continue');
+    expect(labels[1]).toContain('Finished');
+    expect(labels[1]).not.toContain('%');
+    expect(fixture.nativeElement.querySelector('[aria-label="Play message 42"]').textContent).toContain('Replay');
+    expect(fixture.nativeElement.querySelector('[aria-label="Play message 41"]').textContent).toContain('Resume');
   });
   it('confirms deletion and removes the text, queue copies and current reader', async () => {
     const fixture = setup('');

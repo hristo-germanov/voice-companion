@@ -32,3 +32,48 @@
 .delete-confirmation { margin-top:14px; padding:14px; border:1px solid #efd4d9; border-radius:9px; background:#fff7f8; }
 .delete-confirmation p { color:#8a3d4a; font-size:12px; margin-bottom:12px; }
 .delete-confirmation .row-actions { display:flex; gap:8px; justify-content:flex-end; }
+
+/* A single reading surface keeps the text and its controls together. */
+.listening-layout { display: block; }
+.player.reader-panel { position: static; text-align: left; width: auto; margin-top: 24px; }
+.reader-panel .section-heading { gap: 16px; flex-wrap: wrap; }
+.reader-panel .word-reader { margin: 16px 0; }
+.reader-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 16px; }
+.reader-status { color: #776582; font-size: 12px; }
+.reader-footer .player-controls { margin: 0; flex-wrap: wrap; gap: 8px; }
+.reader-panel .seek-controls { justify-content: flex-end; margin: 12px 0; }
+.reader-panel .reader-empty { padding: 24px 0; line-height: 1.7; }
+.reader-panel .voice-summary { margin-top: 12px; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 720px) {
+  .reader-footer { align-items: flex-start; flex-direction: column; }
+  .reader-panel .seek-controls { justify-content: flex-start; }
+}
+
+.composer-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.voice-bubble { position: fixed; right: 24px; bottom: 20px; z-index: 5; border: 1px solid #ded5ee; border-radius: 24px; background: #fff; color: #5942a5; box-shadow: 0 4px 20px #34235820; padding: 10px 18px; text-align: left; max-width: calc(100vw - 32px); }
+.voice-bubble span, .voice-bubble small { display: block; }
+.voice-bubble span { font-weight: 600; }
+.voice-bubble small { font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.voice-popover { position: fixed; inset: auto 24px 94px auto; margin: 0; width: 360px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 120px); overflow: auto; padding: 22px; border: 1px solid #ded5ee; border-radius: 16px; color: #252338; background: #fff; box-shadow: 0 8px 32px #34235825; }
+.voice-popover h2 { font-size: 17px; }
+.voice-popover .input-row { margin: 16px 0; }
+.voice-popover .input-row select, .voice-popover .input-row input { min-width: 0; }
+.voice-popover .hint { margin-bottom: 12px; }
+.workspace { padding-bottom: 110px; }
+.audio-seek:disabled { opacity: .65; }
+@media (max-width: 720px) {
+  .composer-footer { gap: 12px; flex-wrap: wrap; }
+  .voice-bubble { right: 16px; bottom: 16px; }
+  .voice-popover { right: 16px; }
+}
+
+.new-text-bar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.new-text-bar .muted { font-size: 12px; }
+
+.chatgpt-help { margin-top: 16px; }
+.chatgpt-help summary { cursor: pointer; width: fit-content; }
+.chatgpt-help summary:focus-visible { outline: 2px solid #8b68ca; outline-offset: 4px; }
+.chatgpt-help h3 { font-size: 12px; margin-top: 16px; color: #625572; }
+.chatgpt-help ol { padding-left: 20px; margin: 10px 0; }
+.chatgpt-help li { margin: 8px 0; line-height: 1.8; }
+.chatgpt-help code { overflow-wrap: anywhere; }
