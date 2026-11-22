@@ -1,24 +1,24 @@
 # User guide
 
-This guide describes the current source as reviewed on 2026-11-11. Start both services using [Run locally](local-run.md), then open http://localhost:4200/.
+Start both services using [Run locally](local-run.md), then open http://localhost:4200/.
 
 ## Listening workspace
 
-Use **Paste text** for manual reading and its history, or **ChatGPT** for captured messages and automatic-reading toggles. **Voice settings** opens a separate dialog for the engine, voice, and speed; close it with **Done** or Escape. The shared **Now listening** player stays available across tabs.
+Use **Paste text** for manual reading and its history, or **ChatGPT** for captured messages and automatic-reading toggles. Open **Voice & language** for quick controls or select **More voice settings** for engine, voice, and speed settings. The **Reading space** is shared across tabs.
 
-Each active history row has **Pause / Resume** and **Stop**. Inactive rows have **Play / Continue**: selecting one replaces current playback and clears queued items. Use **Queue** instead to preserve current playback. Each recording is read once, then the next queued recording starts; playback stops when the queue is empty. Connection and error details are under **Connection & diagnostics** at the bottom.
+The active history row has **Pause** or **Resume**, along with **Stop**. Selecting **Play now**, **Resume**, or **Replay** on another row replaces current playback and clears queued items. Use **Add to queue** to preserve current playback. Each recording plays once and the next queued recording starts automatically.
 
 ## Listen to pasted text
 
-While a recording plays, the main action becomes **Add to queue**. Paste the next text and submit it without interrupting playback. History rows also have **Queue**. **Next** lists waiting recordings and their audio-buffer status; remove one entry or clear the waiting list independently. Kokoro buffers the next recording while the current one plays and starts it automatically afterward. **Stop** ends playback and clears the waiting list; **Next recording** skips only the current one.
+Select **New text** above the reading space to open and focus the editor. While a recording plays, **Add to queue** saves the next text without interrupting playback. History rows also have **Queue**. The queue shows waiting recordings and their audio-buffer status, with controls to remove an entry or clear the waiting list. Kokoro buffers the next recording while the current one plays and starts it automatically afterward. **Stop** ends playback and clears the waiting list. **Next recording** skips the current one.
 
 The current text highlights words using Kokoro timing metadata, with optional automatic scrolling. The small player uses only elapsed/total time and one audio slider; percentages remain beside the text on the left. During generation, it shows the amount of audio ready in minutes/seconds and an unknown total (`--:--`). The slider and **−15 / +15 seconds** activate once the entire recording is buffered, keeping a fixed full-recording scale instead of resizing as parts arrive. Playback may begin before the full timeline is ready.
 
 Every history entry shows its percentage, including 0% for new text and 100% after completion. Interrupted entries offer **Continue** from the saved audio position and **From beginning** to restart. Positions are saved in SQLite periodically and on explicit controls, so refresh/restart preserves progress. Generated audio is rebuilt when an interrupted recording is resumed after stopping.
 
-Paste or type text in the **Paste text** tab, then select **Read aloud**. Each submission is saved in **Your listening history** and added after any current speech. The limit is 50,000 characters; blank text cannot be submitted. No browser extension is needed, and capture reading toggles do not affect manual submissions.
+Paste or type text in the **Paste text** tab, then select **Play now** to start it. If a recording is active, **Play now** saves its progress and replaces it, clearing any waiting recordings. Each submission is saved in your listening history. The limit is 50,000 characters and the editor requires nonblank text. Manual submissions work independently of browser capture.
 
-Choose the voice and speed under **Voice settings**. Use **Pause**, **Resume**, and **Stop** on the active history entry or in **Now listening**. If the queue is paused, select **Resume**. **Clear text** clears only the draft, and history entries can be replayed with **Play**. Drafts remain after submission but are not retained across page reloads. Edge and Cloud modes send the text to their online speech providers, just as they do for captured messages.
+Choose the voice and speed under **Voice settings**. Use **Pause**, **Resume**, and **Stop** on the active history entry or in **Now listening**. If the queue is paused, select **Resume**. **Clear text** clears the draft, and history entries can be replayed with **Play**. A successful submission clears and closes the editor. A failed submission keeps the draft available for retry.
 
 ## Connect browser capture
 
@@ -45,22 +45,22 @@ Kokoro generates speech on your computer with no online synthesis request. Its m
 
 Settings save as controls change; there is no separate dashboard Save button. Check the status message for success. Speech settings are read when each queued message starts, so rate/voice changes generally apply to subsequent playback rather than the current message.
 
-Short messages are generated as one audio file. Long Kokoro messages use bounded parts and prepare the next part while the current part plays. The player shows preparation status and part number. Formatting-only lines are skipped. Stop cancels playback and pending API requests while keeping the local Kokoro model loaded.
+Kokoro generates shorter messages as one audio file. For longer passages, including a roughly 650-word article, it generates a small first part so reading can start while the remaining parts are still being prepared. The player shows preparation status and part number. Formatting-only chunks are skipped. Stop cancels playback and pending API requests while keeping the local Kokoro model loaded.
 
 ## Playback controls
 
 | Control | Behavior |
 | --- | --- |
-| History **Play** | Replaces active playback with that specific message |
-| **Pause** / **Resume** | Pauses/resumes local or Edge playback; Cloud pauses at segment boundaries |
-| **Stop** | Stops current playback, cancels Edge audio generation, and drains the speech queue |
-| **Skip** | Requests skipping the current item; Cloud may finish the current audio segment first |
-| **Repeat** | Queues the last attempted message again |
+| History **Play now** | Replaces active playback with that specific message |
+| **Pause** / **Resume** | Pauses or resumes Kokoro or Windows playback. Cloud pauses at segment boundaries. |
+| **Stop** | Stops current playback, cancels pending generation requests, and clears the speech queue |
+| **Next recording** | Skips the current item and advances to the next item. Cloud may finish the active segment first. |
+| **Replay** | Starts a finished recording from the beginning |
 | **Refresh** | Reloads connection status, settings, voices, history, and diagnostics |
 
 Stop does not disable incoming capture or clear the stability buffer. New captures, or an already buffered update, can enqueue speech afterward. Disable extension capture when you need forwarding to stop.
 
-**Speech Tracker** shows active text, queue count, segment, and estimated position. Edge position is estimated from audio progress; Cloud position advances between segments. Highlighting is approximate and based on English-style word characters, rather than speech-provider word timings. The dashboard polls the tracker and diagnostics every two seconds, and history about every six seconds while connected.
+The reading space shows active text, position, and buffering status. Kokoro tracks playback time from the audio device and uses its word timings for the reading highlight. Cloud position advances between segments.
 
 ## Capture and history
 
@@ -68,7 +68,7 @@ Stop does not disable incoming capture or clear the stability buffer. New captur
 - **Read user prompts** is saved, but the current stability worker only enqueues assistant messages. User prompts can still appear in history and be played manually.
 - History is newest first. The dashboard limit ranges from 10 to 500, with a default of 50.
 - Captured text and settings persist in SQLite. Pending speech, repeat state, and deduplication state do not survive an API restart.
-- There is no history deletion or export control in the current dashboard.
+- Use the delete button on a history row and confirm **Delete text** to remove the recording and its queued copies.
 
 ## Diagnose problems
 
@@ -78,11 +78,11 @@ Stop does not disable incoming capture or clear the stability buffer. New captur
 | No captured messages | Confirm the extension is enabled, refresh the ChatGPT tab, check its port/key, and inspect browser console messages prefixed `[VoiceCompanion]`. |
 | Capture returns 401 | Match the extension API key to `Api:ApiKey` and save. |
 | Captured replies are silent | Confirm assistant reading is enabled, explicitly persist the desired mode, check output volume/device, and inspect Speech Diagnostics. |
-| Edge voice list appears but playback fails | The API can return a built-in fallback list. Verify `Get-Command edge-tts` and `edge-tts --version` in the API terminal, network access, and the latest error. |
+| Kokoro playback fails | Check that the model and Python dependencies are installed and review the playback error in the reading space. |
 | Cloud playback fails | Check the saved key/model/voice and diagnostics; the service records provider errors. |
 | UI does not recover after API restart | Click Refresh or reload the dashboard. Background polling does not re-establish a failed initial connection. |
 | History or playback seems to mix tabs | The current API reuses the latest database session and does not provide isolated queues per conversation. |
 
-**Clear latest error** removes the error text from the latest speech event. It does not retry playback or change that event's status. Use history Play to retry after resolving the cause.
+**Dismiss** clears the stored detail from the latest playback error. Use the history row to retry playback after resolving the cause.
 
 See [Run locally](local-run.md) for startup problems and [Configuration](configuration.md) for storage and privacy details.

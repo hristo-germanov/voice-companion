@@ -10,6 +10,7 @@ A Windows companion that captures messages from ChatGPT in Chrome or Edge, store
 - [Architecture](docs/architecture.md): components, message flow, persistence, and implementation limits.
 - [API reference](docs/api.md): endpoints, payloads, responses, and capture authentication.
 - [Development guide](docs/development.md): source map, change workflow, checks, and maintenance.
+- [Feature regression checklist](docs/feature-regressions.md): current playback, capture, and history behavior with test commands.
 - [Database lifecycle](docs/migrations.md): schema creation and migration constraints.
 - [GitHub preparation](docs/github.md): excluded local files, fresh-clone setup, and publishing commands.
 
@@ -46,8 +47,8 @@ Heart US is the default voice. Select Bella US in **Voice settings** to switch. 
 | `apps/extension/` | Manifest V3 browser capture extension |
 | `packages/shared/`, `packages/ui/` | Shared-package areas |
 | `scripts/` | Fast API launch and bootstrap scripts |
-| `tests/` | Reserved integration-test area; currently empty |
+| `tests/` | API, extension, word-alignment, and Windows playback regressions |
 | `docs/` | Application and development documentation |
 | `AGENTS.md` | Contributor roles and ownership rules |
 
-Documentation describes source behavior reviewed on 2026-11-11. The earlier local launch verified frontend HTTP 200 and API health/settings/voices/diagnostics responses; audible playback was not verified. `docs/spec.txt` and `docs/session-state.md` contain historical planning/context and may differ from the implementation.
+`docs/spec.txt` and `docs/session-state.md` contain historical planning notes and may differ from the implementation.

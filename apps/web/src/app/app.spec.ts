@@ -60,11 +60,16 @@ describe('Manual text playback', () => {
     expect(fixture.componentInstance['manualBusy']()).toBe(false);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('textarea')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.new-text-bar button').textContent).toContain('New text');
+    const newText = fixture.nativeElement.querySelector('.new-text-bar button') as HTMLButtonElement;
+    expect(newText.textContent).toContain('New text');
+    expect(newText.classList.contains('primary')).toBe(true);
     expect(fixture.nativeElement.querySelector('.word-reader').textContent).toBe('Hello\nworld');
-    fixture.componentInstance['showComposer']();
+    newText.click();
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('textarea').value).toBe('');
+    const draft = fixture.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
+    expect(draft.value).toBe('');
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    expect(document.activeElement).toBe(draft);
     expect(fixture.nativeElement.querySelector('.history .source-label').textContent).not.toContain('PASTED TEXT');
     http.verify();
   });
@@ -341,6 +346,41 @@ describe('Manual text playback', () => {
     http.expectOne('http://127.0.0.1:17832/api/speech/queue').flush([{ id: 'q1', messageId: '7', text: 'Next text', status: 'ready', bufferedParts: 1, totalParts: 1, voice: 'af_heart' }]);
     await pending;
     expect(fixture.componentInstance['pendingSpeech']().length).toBe(1);
+    http.expectNone('http://127.0.0.1:17832/api/speech/stop');
+    http.verify();
+  });
+
+  it('shows queue readiness and can remove or clear waiting texts during a reading', async () => {
+    const fixture = setup('');
+    const app = fixture.componentInstance;
+    const http = TestBed.inject(HttpTestingController);
+    app['speechTracker'].set({ currentMessageId: '5', currentText: 'Active recording', isSpeaking: true } as never);
+    app['pendingSpeech'].set([
+      { id: 'waiting-6', messageId: '6', text: 'First queued text', status: 'ready', bufferedParts: 1, totalParts: 1 },
+      { id: 'waiting-7', messageId: '7', text: 'Second queued text', status: 'buffering', bufferedParts: 1, totalParts: 2 }
+    ] as never);
+    fixture.detectChanges();
+    const queue = fixture.nativeElement.querySelector('.up-next') as HTMLElement;
+    expect(queue.textContent).toContain('Audio ready');
+    expect(queue.textContent).toContain('Buffering 1/2');
+
+    queue.querySelector<HTMLButtonElement>('[aria-label="Remove queued message 6"]')!.click();
+    const removal = http.expectOne('http://127.0.0.1:17832/api/speech/queue/waiting-6');
+    expect(removal.request.method).toBe('DELETE');
+    removal.flush(null);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(queue.textContent).not.toContain('First queued text');
+    expect(queue.textContent).toContain('Second queued text');
+
+    queue.querySelector<HTMLButtonElement>('.section-heading button')!.click();
+    const clear = http.expectOne('http://127.0.0.1:17832/api/speech/queue');
+    expect(clear.request.method).toBe('DELETE');
+    clear.flush(null);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.up-next')).toBeNull();
+    expect(app['speechTracker']()?.currentMessageId).toBe('5');
     http.expectNone('http://127.0.0.1:17832/api/speech/stop');
     http.verify();
   });

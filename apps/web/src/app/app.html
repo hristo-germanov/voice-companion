@@ -34,7 +34,12 @@
             @if (readerText()) { <button type="button" class="text-button" (click)="composerOpen.set(false)">Back to reading</button> }
           </section>
           } @else {
-            <div class="new-text-bar"><button #newTextButton type="button" class="secondary" (click)="showComposer()">+ New text</button><span class="muted" role="status">{{ manualStatus() }}</span></div>
+            <div class="new-text-bar">
+              <button #newTextButton type="button" class="primary new-text-button" (click)="showComposer()">
+                <span aria-hidden="true">+</span> New text
+              </button>
+              <span class="muted" role="status">{{ manualStatus() }}</span>
+            </div>
           }
         } @else {
           <section class="card capture-card">

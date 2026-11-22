@@ -38,7 +38,7 @@ npm.cmd test -- --watch=false
 npm.cmd run build
 ```
 
-The current frontend tests in `src/app/app.spec.ts` cover component creation and the dashboard title. They do not establish capture or playback correctness. The production build checks compilation and configured bundle/style budgets. Use it for release verification or relevant changes, not every development restart.
+The frontend suite exercises dashboard interactions with mocked API responses. The production build checks compilation and configured bundle and style budgets. See the [feature regression checklist](feature-regressions.md) for test commands for the API, browser extension, and actual Windows playback.
 
 From the repository root, with the API stopped:
 
@@ -49,7 +49,7 @@ $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 dotnet build .\apps\api\ChatGPTVoiceCompanion.Api.csproj --no-restore
 ```
 
-Restore first if assets are missing. There is currently no backend test project or extension test suite in the source, and the top-level `tests/` directory is empty. Add directly impacted tests when changing behavior; no new product tests are needed for documentation-only edits.
+Restore first if assets are missing. Add directly impacted tests when changing behavior.
 
 ## Manual verification checklist
 

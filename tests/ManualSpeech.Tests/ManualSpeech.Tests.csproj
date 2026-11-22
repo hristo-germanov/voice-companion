@@ -7,8 +7,11 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Using Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.2" />
+    <Compile Include="../../apps/api/Controllers/CaptureController.cs" Link="CaptureController.cs" />
     <Compile Include="../../apps/api/Controllers/HistoryController.cs" Link="HistoryController.cs" />
+    <Compile Include="../../apps/api/Controllers/SettingsController.cs" Link="SettingsController.cs" />
     <Compile Include="../../apps/api/Controllers/SpeechController.cs" Link="SpeechController.cs" />
     <Compile Include="../../apps/api/Data/AppDbContext.cs" Link="AppDbContext.cs" />
     <Compile Include="../../apps/api/Data/PlaybackProgressSchema.cs" Link="PlaybackProgressSchema.cs" />
@@ -18,5 +21,11 @@
     <Compile Include="../../apps/api/Options/SpeechOptions.cs" Link="SpeechOptions.cs" />
     <Compile Include="../../apps/api/Services/BufferedSpeech.cs" Link="BufferedSpeech.cs" />
     <Compile Include="../../apps/api/Services/SpeechWorkQueue.cs" Link="SpeechWorkQueue.cs" />
+    <Compile Include="../../apps/api/Services/IMessageDeduper.cs" Link="IMessageDeduper.cs" />
+    <Compile Include="../../apps/api/Services/IStabilityBuffer.cs" Link="IStabilityBuffer.cs" />
+    <Compile Include="../../apps/api/Services/MessageDeduper.cs" Link="MessageDeduper.cs" />
+    <Compile Include="../../apps/api/Services/StabilityBuffer.cs" Link="StabilityBuffer.cs" />
+    <Compile Include="../../apps/api/Options/ApiOptions.cs" Link="ApiOptions.cs" />
+    <Compile Include="../../apps/api/Options/StabilityOptions.cs" Link="StabilityOptions.cs" />
   </ItemGroup>
 </Project>

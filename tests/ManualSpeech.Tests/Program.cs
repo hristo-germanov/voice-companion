@@ -31,10 +31,20 @@ foreach (var text in new[] { "  Hello\nworld  ", new string('x', 50000), "  Hell
 var messages = await db.CapturedMessages.OrderBy(x => x.Id).ToListAsync();
 Check(messages.Count == 3 && queue.Items.Count == 3, "Each submission must save and queue once");
 Check(messages[0].Text == "Hello\nworld" && messages[0].Role == "manual", "Trim and label manual entries");
-Check(queue.Items[0] == (messages[0].Id.ToString(), messages[0].Text), "Queue stored ID and text");
+Check(queue.Items[0] == (messages[0].Id.ToString(), messages[0].Text, 0), "Queue stored ID and text from the beginning");
 Check(messages[0].TextHash == messages[2].TextHash, "Hash trimmed text consistently");
 Check(await controller.PlayMessage(messages[0].Id, default) is OkObjectResult, "Manual history must replay");
 Check(queue.Items.Count == 4, "Replay must enqueue");
+messages[0].PlaybackPositionSeconds = 12.5;
+await db.SaveChangesAsync();
+Check(await controller.PlayMessage(messages[0].Id, default) is OkObjectResult
+    && queue.Items[^1].StartSeconds == 12.5, "Continue an unfinished recording from saved audio time");
+Check(await controller.PlayMessage(messages[0].Id, default, restart: true) is OkObjectResult
+    && queue.Items[^1].StartSeconds == 0, "From beginning ignores saved audio time");
+messages[0].PlaybackCompleted = true;
+await db.SaveChangesAsync();
+Check(await controller.PlayMessage(messages[0].Id, default) is OkObjectResult
+    && queue.Items[^1].StartSeconds == 0, "Replay a finished recording from the beginning");
 Console.WriteLine("Manual speech regression checks passed.");
 var historyController = new HistoryController(db, queue);
 db.SpeechEvents.AddRange(
@@ -48,6 +58,16 @@ Check(!await db.SpeechEvents.AnyAsync(x => x.MessageId == messages[0].Id), "Remo
 Check(await db.CapturedMessages.CountAsync() == 2 && await db.SpeechEvents.CountAsync() == 1, "Preserve unrelated texts and events");
 Check(await historyController.Delete(messages[0].Id) is NotFoundResult, "Missing text returns 404");
 Console.WriteLine("History deletion regression checks passed.");
+
+var latestFailure = new ChatGPTVoiceCompanion.Models.SpeechEvent
+{
+    MessageId = messages[2].Id, Status = "failed", Error = "Test synthesis failure"
+};
+db.SpeechEvents.Add(latestFailure);
+await db.SaveChangesAsync();
+Check(await controller.Diagnostics(default) is OkObjectResult, "Return playback diagnostics");
+Check(await controller.ClearLatestError(default) is OkObjectResult && latestFailure.Error is null
+    && latestFailure.Status == "failed", "Dismiss the latest error detail while retaining the recorded outcome");
 
 Check(EdgeSpeechText.Split("Hello.\r\n```\n---\n##\nWorld!").SequenceEqual(new[] { "Hello.\nWorld!" }),
     "Markdown separators must not become speech requests");
@@ -122,6 +142,7 @@ using (var legacyConnection = new SqliteConnection("Data Source=:memory:"))
         "Schema upgrade preserves text and saved progress on repeated startup");
 }
 Console.WriteLine("Queue, buffering, seek and progress migration regression checks passed.");
+await CaptureChecks.RunAsync(Check);
 
 static void Check(bool condition, string message)
 {
@@ -130,8 +151,15 @@ static void Check(bool condition, string message)
 
 sealed class RecordingQueue : ISpeechQueue
 {
-    public List<(string Id, string Text)> Items { get; } = new();
-    public void Enqueue(string messageId, string text, double startSeconds = 0) => Items.Add((messageId, text));
+    public List<(string Id, string Text, double StartSeconds)> Items { get; } = new();
+    public TaskCompletionSource<(string Id, string Text, double StartSeconds)> FirstItem { get; }
+        = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public void Enqueue(string messageId, string text, double startSeconds = 0)
+    {
+        var item = (messageId, text, startSeconds);
+        Items.Add(item);
+        FirstItem.TrySetResult(item);
+    }
     public void Pause() { }
     public void Resume() { }
     public void StopAll() { }
