@@ -41,6 +41,7 @@ public sealed class SpeechQueue : BackgroundService, ISpeechQueue
     private volatile bool _isSpeaking;
     private string? _currentMessageId;
     private string? _currentText;
+    private volatile string? _currentMode;
     private DateTimeOffset? _currentStartedAt;
     private volatile int _currentCharIndex;
     private volatile int _currentTextLength;
@@ -196,7 +197,8 @@ public sealed class SpeechQueue : BackgroundService, ISpeechQueue
             Volatile.Read(ref _currentWord),
             Volatile.Read(ref _seekPosition)?.Seconds ?? Volatile.Read(ref _positionSeconds),
             _currentBuffer?.BufferedSeconds ?? 0,
-            _currentBuffer?.IsComplete ?? false);
+            _currentBuffer?.IsComplete ?? false,
+            _currentMode);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -390,6 +392,11 @@ public sealed class SpeechQueue : BackgroundService, ISpeechQueue
         var startedAt = DateTimeOffset.UtcNow;
         await MarkSpeechStarted(speechEvent, startedAt, ct);
         var runtimeSettings = await LoadRuntimeSettings(ct);
+        lock (_playbackLock)
+        {
+            ct.ThrowIfCancellationRequested();
+            _currentMode = runtimeSettings.Mode;
+        }
 
         if (runtimeSettings.Mode == "cloud")
         {
@@ -486,6 +493,7 @@ public sealed class SpeechQueue : BackgroundService, ISpeechQueue
         _isSpeaking = false;
         _currentMessageId = null;
         _currentText = null;
+        _currentMode = null;
         _currentStartedAt = null;
         _currentCharIndex = 0;
         _currentTextLength = 0;

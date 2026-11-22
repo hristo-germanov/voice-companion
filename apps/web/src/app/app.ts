@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, ElementRef, OnDestroy, OnInit, ViewChild, computed, signal } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild, afterRenderEffect, computed, signal, viewChild } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 type Role = 'assistant' | 'user' | 'manual';
@@ -56,6 +56,7 @@ interface SpeechDiagnostics {
 }
 
 interface SpeechTracker {
+  currentMode?: SpeechMode | 'edge' | null;
   currentWord?: { start: number; length: number } | null;
   positionSeconds?: number;
   bufferedSeconds?: number;
@@ -91,8 +92,9 @@ export class App implements OnInit, OnDestroy {
   private pollTimer: number | null = null;
   private audioPollTimer: number | null = null;
   private trackerInFlight = false;
-  private lastWordKey = '';
-  @ViewChild('reader') private reader?: ElementRef<HTMLElement>;
+  private trackerRevision = 0;
+  private displayedReadingId: string | null = null;
+  private readonly reader = viewChild<ElementRef<HTMLElement>>('reader');
   private liveRefreshInFlight = false;
   private liveRefreshTick = 0;
 
@@ -208,10 +210,10 @@ export class App implements OnInit, OnDestroy {
 
   private readonly lastReading = signal<HistoryItem | null>(null);
   private readonly startingMessageId = signal<number | null>(null);
-  protected readonly readerItem = computed(() => {
-    const id = this.speechTracker()?.currentMessageId ?? this.lastReading()?.id;
-    return this.history().find(item => String(item.id) === String(id)) ?? this.lastReading();
-  });
+  private readonly readerMessageId = computed(() =>
+    this.speechTracker()?.currentMessageId ?? this.lastReading()?.id.toString() ?? null);
+  protected readonly readerItem = computed(() =>
+    this.history().find(item => String(item.id) === this.readerMessageId()) ?? this.lastReading());
   protected readonly readerText = computed(() => this.speechTracker()?.currentText ?? this.readerItem()?.text ?? '');
   protected readonly readerProgress = computed(() => this.speechTracker()?.currentMessageId
     ? this.playbackProgress() : this.readerItem() ? this.recordPercent(this.readerItem()!) : 0);
@@ -224,12 +226,12 @@ export class App implements OnInit, OnDestroy {
       ? `Stopped \u00b7 ${this.readerProgress()}% read` : 'Ready to listen';
   });
   protected readonly readerHighlight = computed<TrackerHighlight>(() => {
-    const text = this.readerText();
-    const word = this.trackerHighlight();
-    if (!this.autoScroll() || !this.speechTracker()?.currentMessageId || !word.current)
-      return { before: text, current: '', after: '' };
-    return word;
-  });
+    if (this.autoScroll() && this.speechTracker()?.currentMessageId) {
+      const word = this.trackerHighlight();
+      if (word.current) return word;
+    }
+    return { before: this.readerText(), current: '', after: '' };
+  }, { equal: (a, b) => a.before === b.before && a.current === b.current && a.after === b.after });
 
   private rememberReading(): void {
     const tracker = this.speechTracker();
@@ -237,6 +239,7 @@ export class App implements OnInit, OnDestroy {
     const item = this.history().find(entry => String(entry.id) === tracker.currentMessageId);
     const snapshot = { ...item, id: Number(tracker.currentMessageId), text: tracker.currentText,
       playbackPositionSeconds: tracker.positionSeconds ?? 0,
+      playbackDurationSeconds: tracker.isFullyBuffered ? tracker.bufferedSeconds : item?.playbackDurationSeconds,
       playbackProgressPercent: this.playbackProgress(), playbackCompleted: false } as HistoryItem;
     this.lastReading.set(snapshot);
     this.history.update(items => items.map(entry => entry.id === snapshot.id ? { ...entry, ...snapshot } : entry));
@@ -251,7 +254,36 @@ export class App implements OnInit, OnDestroy {
     }
   }
 
-  constructor(private readonly http: HttpClient) {}
+  constructor(private readonly http: HttpClient) {
+    afterRenderEffect({
+      earlyRead: () => {
+        const messageId = this.readerMessageId();
+        const reader = this.reader()?.nativeElement;
+        const highlight = this.readerHighlight();
+        if (!reader) return null;
+
+        // Start a new recording at the top unless its first reported word is further down.
+        const scrollTop = reader.scrollTop;
+        let top = messageId === this.displayedReadingId ? scrollTop : 0;
+        const mark = highlight.current ? reader.querySelector('mark') : null;
+        if (mark) {
+          const bounds = mark.getBoundingClientRect();
+          const viewportTop = reader.getBoundingClientRect().top + reader.clientTop;
+          const wordTop = bounds.top - viewportTop + scrollTop;
+          const wordBottom = bounds.bottom - viewportTop + scrollTop;
+          if (wordTop < top || wordBottom > top + reader.clientHeight) {
+            top = Math.max(0, wordTop - reader.clientHeight / 2);
+          }
+        }
+        return { reader, messageId, scrollTop, top };
+      },
+      write: scrollTarget => {
+        const target = scrollTarget();
+        this.displayedReadingId = target?.messageId ?? null;
+        if (target && target.scrollTop !== target.top) target.reader.scrollTop = target.top;
+      }
+    });
+  }
 
   async ngOnInit(): Promise<void> {
     await this.refreshAll();
@@ -404,6 +436,11 @@ export class App implements OnInit, OnDestroy {
 
   private async stopForReplacement(): Promise<void> {
     await firstValueFrom(this.http.post(`${this.apiBase}/api/speech/stop`, {}));
+    this.resetPlayback();
+  }
+
+  private resetPlayback(): void {
+    this.trackerRevision++;
     this.rememberReading();
     this.speechTracker.set(null);
     this.pendingSpeech.set([]);
@@ -527,28 +564,16 @@ export class App implements OnInit, OnDestroy {
   private async loadTracker(): Promise<void> {
     if (this.trackerInFlight) return;
     this.trackerInFlight = true;
+    const revision = this.trackerRevision;
     try {
       const data = await firstValueFrom(this.http.get<SpeechTracker>(`${this.apiBase}/api/speech/tracker`));
-      this.rememberReading();
+      if (revision !== this.trackerRevision) return;
       const previous = this.speechTracker()?.currentMessageId;
+      if (previous && previous !== data.currentMessageId) this.rememberReading();
       this.speechTracker.set(data.currentMessageId && this.deletedHistoryIds.has(Number(data.currentMessageId)) ? null : data);
       this.rememberReading();
       if (data.currentMessageId === String(this.startingMessageId())) this.startingMessageId.set(null);
-      if (data.currentMessageId) this.history.update(items => items.map(item => String(item.id) === data.currentMessageId
-        ? { ...item, playbackPositionSeconds: data.positionSeconds ?? 0,
-            playbackDurationSeconds: data.isFullyBuffered ? data.bufferedSeconds : item.playbackDurationSeconds,
-            playbackProgressPercent: this.playbackProgress(), playbackCompleted: false } : item));
       if (previous && previous !== data.currentMessageId) void this.loadHistory(this.historyLimit()).catch(() => {});
-      const wordKey = `${data.currentMessageId}:${data.currentWord?.start ?? data.currentCharIndex}`;
-      if (wordKey !== this.lastWordKey && this.autoScroll()) {
-        this.lastWordKey = wordKey;
-        window.requestAnimationFrame(() => {
-          const reader = this.reader?.nativeElement;
-          const mark = reader?.querySelector<HTMLElement>('mark');
-          if (reader && mark && mark.textContent && (mark.offsetTop < reader.scrollTop || mark.offsetTop > reader.scrollTop + reader.clientHeight - 45))
-            reader.scrollTo({ top: Math.max(0, mark.offsetTop - reader.clientHeight / 2), behavior: 'smooth' });
-        });
-      }
     } finally { this.trackerInFlight = false; }
   }
 
@@ -686,13 +711,14 @@ export class App implements OnInit, OnDestroy {
     if (!text) {
       return { before: '', current: '', after: '' };
     }
-    if (this.speechMode() === 'kokoro') {
-      const word = tracker?.currentWord;
-      if (!word) return { before: text, current: '', after: '' };
+    const word = tracker?.currentWord;
+    if (word) {
       const start = Math.max(0, Math.min(text.length, word.start));
       const end = Math.min(text.length, start + word.length);
       return { before: text.slice(0, start), current: text.slice(start, end), after: text.slice(end) };
     }
+    const mode = tracker?.currentMode === undefined ? this.speechMode() : tracker.currentMode;
+    if (mode === null || mode === 'kokoro') return { before: text, current: '', after: '' };
 
     const rawIndex = tracker?.currentCharIndex ?? 0;
     const index = Math.max(0, Math.min(text.length, rawIndex));
@@ -760,11 +786,8 @@ export class App implements OnInit, OnDestroy {
       const tracker = this.speechTracker();
       if (tracker && action === 'pause') this.speechTracker.set({ ...tracker, isPaused: true });
       if (tracker && action === 'resume') this.speechTracker.set({ ...tracker, isPaused: false });
-      if (action === 'stop') this.rememberReading();
-      if (tracker && action === 'stop') this.speechTracker.set({ ...tracker,
-        isSpeaking: false, isPaused: false, currentMessageId: null, currentText: null,
-        queuedItems: 0, currentCharIndex: 0, currentTextLength: 0 });
-      if (action === 'stop') { this.pendingSpeech.set([]); this.startingMessageId.set(null); }
+      if (action === 'stop') this.resetPlayback();
+      if (action === 'skip') this.trackerRevision++;
       this.message.set(`Speech ${action} requested.`);
     } catch {
       this.message.set(`Failed to call /api/speech/${action}.`);

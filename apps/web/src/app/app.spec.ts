@@ -78,20 +78,28 @@ describe('Manual text playback', () => {
     const fixture = setup('New text');
     const app = fixture.componentInstance;
     app['connected'].set(true);
-    app['speechTracker'].set({ currentMessageId: '5', currentText: 'Old text', isPaused: true,
-      positionSeconds: 20, bufferedSeconds: 100, isFullyBuffered: true } as never);
+    const oldTracker = { currentMessageId: '5', currentText: 'Old text', isPaused: true,
+      currentWord: { start: 0, length: 3 }, positionSeconds: 20, bufferedSeconds: 100,
+      isFullyBuffered: true };
+    app['speechTracker'].set(oldTracker as never);
+    const poll = app['loadTracker']();
+    const http = TestBed.inject(HttpTestingController);
+    const staleTracker = http.expectOne('http://127.0.0.1:17832/api/speech/tracker');
     fixture.detectChanges();
     const actions = fixture.nativeElement.querySelector('.composer-actions');
     expect(actions.textContent).toContain('Play now');
     expect(actions.textContent).toContain('Add to queue');
     actions.querySelector('.primary').click();
-    const http = TestBed.inject(HttpTestingController);
     http.expectNone('http://127.0.0.1:17832/api/speech/text');
     http.expectOne('http://127.0.0.1:17832/api/speech/stop').flush(null);
     await new Promise(resolve => setTimeout(resolve, 0));
     http.expectOne('http://127.0.0.1:17832/api/speech/text').flush({ messageId: 6 });
     await fixture.whenStable();
+    staleTracker.flush(oldTracker);
+    await poll;
+    fixture.detectChanges();
     expect(app['readerText']()).toBe('New text');
+    expect(fixture.nativeElement.querySelector('mark').textContent).toBe('');
     expect(app['readerStatus']()).toBe('Preparing audio');
     expect(app['manualText']()).toBe('');
     expect(app['composerOpen']()).toBe(false);
@@ -327,14 +335,48 @@ describe('Manual text playback', () => {
     expect(fixture.nativeElement.querySelector('[aria-label="Resume message 5"]')).toBeTruthy();
   });
 
-  it('highlights the exact timed word rather than estimating it from percentage', () => {
+  it('uses the playing engine to highlight words when the next engine changes', () => {
     const fixture = setup('');
+    const app = fixture.componentInstance;
     const text = '😀 First, second-word and last.';
-    fixture.componentInstance['speechTracker'].set({ currentText: text, currentCharIndex: 0,
+    app['speechTracker'].set({ currentMessageId: '1', currentMode: 'kokoro', currentText: text,
+      currentCharIndex: text.indexOf('word'),
       currentWord: { start: text.indexOf('second-word'), length: 'second-word'.length } } as never);
-    expect(fixture.componentInstance['trackerHighlight']()).toEqual({
-      before: '😀 First, ', current: 'second-word', after: ' and last.'
-    });
+    app['speechMode'].set('local');
+    fixture.detectChanges();
+    const word = () => fixture.nativeElement.querySelector('mark').textContent;
+    expect(word()).toBe('second-word');
+
+    app['speechTracker'].update(tracker => ({ ...tracker!, currentWord: null }));
+    fixture.detectChanges();
+    expect(word()).toBe('');
+
+    app['speechTracker'].update(tracker => ({ ...tracker!, currentMessageId: '2', currentMode: 'local' }));
+    app['speechMode'].set('kokoro');
+    fixture.detectChanges();
+    expect(word()).toBe('word');
+  });
+
+  it('follows the rendered word and resets the reader scroll on a recording switch', () => {
+    const fixture = setup('');
+    const app = fixture.componentInstance;
+    const state = { currentMessageId: '1', currentText: 'First late', currentWord: { start: 0, length: 5 } };
+    app['speechTracker'].set(state as never);
+    fixture.detectChanges();
+    const reader = fixture.nativeElement.querySelector('.word-reader') as HTMLElement;
+    const mark = reader.querySelector('mark')!;
+    Object.defineProperty(reader, 'clientHeight', { value: 100 });
+    mark.getBoundingClientRect = () => new DOMRect(0, (mark.textContent === 'late' ? 200 : 0) - reader.scrollTop, 30, 20);
+    app['speechTracker'].update(tracker => ({ ...tracker!, currentWord: { start: 6, length: 4 } }));
+    fixture.detectChanges();
+    expect(mark.textContent).toBe('late');
+    expect(reader.scrollTop).toBe(150);
+
+    app['speechTracker'].set({ ...state, currentMessageId: '2', currentText: 'Next',
+      currentWord: { start: 0, length: 4 } } as never);
+    fixture.detectChanges();
+    expect(mark.textContent).toBe('Next');
+    expect(reader.scrollTop).toBe(0);
   });
 
   it('adds history to the queue without interrupting current audio', async () => {

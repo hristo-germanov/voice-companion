@@ -16,7 +16,8 @@ public sealed record SpeechTrackerSnapshot(
     SpeechWordPosition? CurrentWord = null,
     double PositionSeconds = 0,
     double BufferedSeconds = 0,
-    bool IsFullyBuffered = false);
+    bool IsFullyBuffered = false,
+    string? CurrentMode = null);
 
 public sealed record SpeechWordPosition(int Start, int Length);
 public sealed record QueuedSpeechSnapshot(string Id, string MessageId, string Text, string Status,
