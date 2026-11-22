@@ -2,26 +2,6 @@
 
 A Windows companion that captures messages from ChatGPT in Chrome or Edge, stores them locally, and reads replies aloud. An Angular dashboard controls playback, speech settings, history, and diagnostics.
 
-## What's new
-
-### November 22, 2026
-
-- The **New text** button is easier to find above the reading space. Select it to open the editor and start typing or pasting.
-- Word highlighting follows the speech engine playing the current recording. Switching recordings clears the old highlight, and **Follow along** scrolls when the current word moves out of view.
-- New regression checks cover browser capture, playback controls, and Kokoro's ability to start a long reading while later audio is still buffering.
-
-## Documentation
-
-- [Run locally](docs/local-run.md): prerequisites, startup commands, health checks, rebuilds, and shutdown.
-- [User guide](docs/user-guide.md): extension setup, speech modes, playback controls, and troubleshooting.
-- [Configuration](docs/configuration.md): ports, persisted settings, defaults, and data storage.
-- [Architecture](docs/architecture.md): components, message flow, persistence, and implementation limits.
-- [API reference](docs/api.md): endpoints, payloads, responses, and capture authentication.
-- [Development guide](docs/development.md): source map, change workflow, checks, and maintenance.
-- [Feature regression checklist](docs/feature-regressions.md): current playback, capture, and history behavior with test commands.
-- [Database lifecycle](docs/migrations.md): schema creation and migration constraints.
-- [GitHub preparation](docs/github.md): excluded local files, fresh-clone setup, and publishing commands.
-
 ## Quick launch
 
 Double-click `start.cmd` in the repository root, or run:
@@ -35,6 +15,19 @@ The launcher starts the API and dashboard in the background, opens http://localh
 For a terminal-only launch, use `.\start.cmd -NoBrowser`. Install the prerequisites and Kokoro model once as described in the [local run guide](docs/local-run.md).
 
 For browser capture, load `apps/extension` as an unpacked extension and set its API key to match `Api:ApiKey` in `apps/api/appsettings.json`. See the [user guide](docs/user-guide.md).
+
+## Documentation
+
+- [Run locally](docs/local-run.md): prerequisites, startup commands, health checks, rebuilds, and shutdown.
+- [Changelog](CHANGELOG.md) for release notes.
+- [User guide](docs/user-guide.md): extension setup, speech modes, playback controls, and troubleshooting.
+- [Configuration](docs/configuration.md): ports, persisted settings, defaults, and data storage.
+- [Architecture](docs/architecture.md): components, message flow, persistence, and implementation limits.
+- [API reference](docs/api.md): endpoints, payloads, responses, and capture authentication.
+- [Development guide](docs/development.md): source map, change workflow, checks, and maintenance.
+- [Feature regression checklist](docs/feature-regressions.md): current playback, capture, and history behavior with test commands.
+- [Database lifecycle](docs/migrations.md): schema creation and migration constraints.
+- [GitHub preparation](docs/github.md): excluded local files, fresh-clone setup, and publishing commands.
 
 ## Speech modes
 
